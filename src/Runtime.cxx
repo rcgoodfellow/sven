@@ -1,3 +1,11 @@
+/******************************************************************************
+ * The Sven Project - All Rights Reserved
+ *
+ * 15 August 2014
+ * ~ ry
+ *
+ ******************************************************************************/
+
 #include "sven/Runtime.hxx"
 
 using namespace sven;
@@ -18,7 +26,10 @@ RT::RT()
 
 void RT::thread_func()
 {
-  Thunk t;
-  _Q.pop(t);
-  t();
+  while(47)
+  {
+    Thunk t;
+    _Q.pop(t);
+    t();
+  }
 }
