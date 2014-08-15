@@ -39,6 +39,7 @@ class Vector
     size_t n() const;
     double & operator()(size_t i);
     ObjectState state() const;
+    bool operator==(const Vector &x);
 
   private:
     size_t _n;
@@ -48,15 +49,26 @@ class Vector
     std::condition_variable *_cnd{new std::condition_variable};
 
     friend void op_plus_impl(const Vector a, const Vector b, Vector ab);
+    friend void op_sub_impl(const Vector a, const Vector b, Vector ab);
     friend void op_dot_impl(const Vector a, const Vector b, Scalar ab);
+    friend void op_div_impl(const Vector a, const Scalar b, Vector ab);
+    friend void op_mul_impl(const Vector a, const Scalar b, Vector ab);
 };
-
 
 Vector operator+ (const Vector &a, const Vector &b);
 void op_plus_impl(const Vector a, const Vector b, Vector ab);
 
+Vector operator- (const Vector &a, const Vector &b);
+void op_sub_impl(const Vector a, const Vector b, Vector ab);
+
 Scalar operator* (const Vector &a, const Vector &b);
 void op_dot_impl(const Vector a, const Vector b, Scalar ab);
+
+Vector operator/ (const Vector &a, const Scalar &b);
+void op_div_impl(const Vector a, const Scalar b, Vector ab);
+
+Vector operator* (const Vector &a, const Scalar &b);
+void op_mul_impl(const Vector a, const Scalar b, Vector ab);
 
 class Scalar
 {
@@ -73,8 +85,27 @@ class Scalar
     std::mutex *_mtx{new std::mutex};
     std::condition_variable *_cnd{new std::condition_variable};
 
+    friend void op_div_impl(const Vector a, const Scalar b, Vector ab);
+    friend void op_mul_impl(const Vector a, const Scalar b, Vector ab);
     friend void op_dot_impl(const Vector a, const Vector b, Scalar ab);
+
+    friend void op_plus_impl(const Scalar a, const Scalar b, Scalar ab);
+    friend void op_sub_impl (const Scalar a, const Scalar b, Scalar ab);
+    friend void op_mul_impl(const Scalar a, const Scalar b, Scalar ab);
+    friend void op_div_impl(const Scalar a, const Scalar b, Scalar ab);
 };
+
+Scalar operator+ (const Scalar &a, const Scalar &b);
+void op_plus_impl(const Scalar a, const Scalar b, Scalar ab);
+
+Scalar operator- (const Scalar &a, const Scalar &b);
+void op_sub_impl (const Scalar a, const Scalar b, Scalar ab);
+
+Scalar operator* (const Scalar &a, const Scalar &b);
+void op_mul_impl(const Scalar a, const Scalar b, Scalar ab);
+
+Scalar operator/ (const Scalar &a, const Scalar &b);
+void op_div_impl (const Scalar a, const Scalar b, Scalar ab);
 
 class Matrix
 {

@@ -66,18 +66,52 @@ double & Vector::operator()(size_t i)
 
 ObjectState Vector::state() const { return *_state; }
 
+#include <iostream>
+
+bool Vector::operator== (const Vector &x)
+{
+  unique_lock<mutex> lk_me{*_mtx}, lk_x{*x._mtx};
+  if(*_state != ObjectState::SolidState) 
+  { 
+    lk_x.unlock();
+    _cnd->wait(lk_me); 
+    lk_x.lock();
+  }
+  if(*x._state != ObjectState::SolidState) 
+  { 
+    lk_me.unlock();
+    x._cnd->wait(lk_x); 
+    lk_me.lock();
+  }
+
+  if(x._n != _n){ return false; }
+
+  for(size_t i=0; i<_n; ++i)
+  {
+    if(x._[i] != _[i]) 
+    { 
+      std::cout << i << std::endl;
+      std::cout << x._[i] << std::endl;
+      std::cout << _[i] << std::endl;
+      return false; 
+    }  
+  }
+
+  lk_me.unlock();
+  lk_x.unlock();
+  return true;
+}
+
 Vector sven::operator+ (const Vector &a, const Vector &b)
 {
-  if(a.n() != b.n()){ 
+  if(a.n() != b.n())
+  { 
     throw runtime_error("non-conformal operation:" + CRIME_SCENE); 
   }
 
   Vector ab(a.n());
-
-  auto f = [a,b,ab](){ op_plus_impl(a,b,ab); };
-
-  internal::RT::Q().push(f);
-
+  internal::Thunk t = [a,b,ab](){ op_plus_impl(a,b,ab); };
+  internal::RT::Q().push(t);
   return ab;
 }
 
@@ -92,6 +126,31 @@ void sven::op_plus_impl(const Vector a, const Vector b, Vector ab)
   }
 }
 
+Vector sven::operator- (const Vector &a, const Vector &b)
+{
+  if(a.n() != b.n())
+  {
+    throw runtime_error("non-conformal operaton:" + CRIME_SCENE);
+  }
+
+  Vector ab(a.n());
+  internal::Thunk t = [a,b,ab](){ op_sub_impl(a,b,ab); };
+  internal::RT::Q().push(t);
+  return ab;
+}
+
+void sven::op_sub_impl(const Vector a, const Vector b, Vector ab)
+{
+  lock_guard<mutex> lk_a{*a._mtx}, lk_b{*b._mtx}, lk_ab{*ab._mtx};
+  for(size_t i=0; i<a.n(); ++i)
+  {
+    ab._[0:ab.n()] = a._[0:a.n()] - b._[0:b.n()]; 
+    *ab._state = ObjectState::SolidState;
+    ab._cnd->notify_all();
+  }
+}
+
+
 Scalar sven::operator* (const Vector &a, const Vector &b)
 {
   if(a.n() != b.n()){ 
@@ -99,11 +158,8 @@ Scalar sven::operator* (const Vector &a, const Vector &b)
   }
 
   Scalar ab;
- 
   internal::Thunk t = [a,b,ab](){ op_dot_impl(a,b,ab); };
-
   internal::RT::Q().push(t);
-
   return ab;
 }
 
@@ -116,6 +172,38 @@ void sven::op_dot_impl(const Vector a, const Vector b, Scalar ab)
     dot += a._[i] * b._[i];
   }
   *ab._ = dot;
+  *ab._state = ObjectState::SolidState;
+  ab._cnd->notify_all();
+}
+
+Vector sven::operator/ (const Vector &a, const Scalar &b)
+{
+  Vector ab(a.n());
+  internal::Thunk t = [a,b,ab](){ op_div_impl(a,b,ab); };
+  internal::RT::Q().push(t);
+  return ab;
+}
+
+void sven::op_div_impl(const Vector a, const Scalar b, Vector ab)
+{
+  lock_guard<mutex> lk_a{*a._mtx}, lk_b{*b._mtx}, lk_ab{*ab._mtx};
+  ab._[0:a._n] = a._[0:a._n] / *b._;
+  *ab._state = ObjectState::SolidState;
+  ab._cnd->notify_all();
+}
+
+Vector sven::operator* (const Vector &a, const Scalar &b)
+{
+  Vector ab(a.n());
+  internal::Thunk t = [a,b,ab](){ op_mul_impl(a,b,ab); };
+  internal::RT::Q().push(t);
+  return ab;
+}
+
+void sven::op_mul_impl(const Vector a, const Scalar b, Vector ab)
+{
+  lock_guard<mutex> lk_a{*a._mtx}, lk_b{*b._mtx}, lk_ab{*ab._mtx};
+  ab._[0:a._n] = a._[0:a._n] * *b._;
   *ab._state = ObjectState::SolidState;
   ab._cnd->notify_all();
 }
@@ -150,6 +238,70 @@ double & Scalar::operator()()
 }
 
 ObjectState Scalar::state() const { return *_state; }
+
+Scalar sven::operator+ (const Scalar &a, const Scalar &b)
+{
+  Scalar ab;
+  internal::Thunk t = [a,b,ab](){ op_plus_impl(a,b,ab); };
+  internal::RT::Q().push(t);
+  return ab;
+}
+
+void sven::op_plus_impl(const Scalar a, const Scalar b, Scalar ab)
+{
+  lock_guard<mutex> lk_a{*a._mtx}, lk_b{*b._mtx}, lk_ab{*ab._mtx};
+  *ab._ = *a._ + *b._;
+  *ab._state = ObjectState::SolidState;
+  ab._cnd->notify_all();
+}
+
+Scalar sven::operator- (const Scalar &a, const Scalar &b)
+{
+  Scalar ab;
+  internal::Thunk t = [a,b,ab](){ op_sub_impl(a,b,ab); };
+  internal::RT::Q().push(t);
+  return ab;
+}
+
+void sven::op_sub_impl(const Scalar a, const Scalar b, Scalar ab)
+{
+  lock_guard<mutex> lk_a{*a._mtx}, lk_b{*b._mtx}, lk_ab{*ab._mtx};
+  *ab._ = *a._ - *b._;
+  *ab._state = ObjectState::SolidState;
+  ab._cnd->notify_all();
+}
+
+Scalar sven::operator* (const Scalar &a, const Scalar &b)
+{
+  Scalar ab;
+  internal::Thunk t = [a,b,ab](){ op_mul_impl(a,b,ab); };
+  internal::RT::Q().push(t);
+  return ab;
+}
+
+void sven::op_mul_impl(const Scalar a, const Scalar b, Scalar ab)
+{
+  lock_guard<mutex> lk_a{*a._mtx}, lk_b{*b._mtx}, lk_ab{*ab._mtx};
+  *ab._ = *a._ * *b._;
+  *ab._state = ObjectState::SolidState;
+  ab._cnd->notify_all();
+}
+
+Scalar sven::operator/ (const Scalar &a, const Scalar &b)
+{
+  Scalar ab;
+  internal::Thunk t = [a,b,ab](){ op_div_impl(a,b,ab); };
+  internal::RT::Q().push(t);
+  return ab;
+}
+
+void sven::op_div_impl(const Scalar a, const Scalar b, Scalar ab)
+{
+  lock_guard<mutex> lk_a{*a._mtx}, lk_b{*b._mtx}, lk_ab{*ab._mtx};
+  *ab._ = *a._ / *b._;
+  *ab._state = ObjectState::SolidState;
+  ab._cnd->notify_all();
+}
 
 //~= Matrix ~=-----------------------------------------------------------------
 Matrix::Matrix(size_t m, size_t n)
