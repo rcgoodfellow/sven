@@ -31,6 +31,7 @@ Vector::Vector(initializer_list<double> xs)
   size_t i{0};
   for(auto d : xs){ _[i++] = d; }
   *_state = ObjectState::SolidState;
+  _cnd->notify_all();
 }
 
 Vector Vector::Zero(size_t n)
@@ -38,6 +39,7 @@ Vector Vector::Zero(size_t n)
   Vector x(n);
   x._[0:n] = 0;
   *x._state = ObjectState::SolidState;
+  x._cnd->notify_all();
   return move(x);
 }
 
@@ -163,15 +165,25 @@ Scalar sven::operator* (const Vector &a, const Vector &b)
   return ab;
 }
 
+double sven::dot(size_t n, double *a, double *b)
+{
+  double dot{0};
+  for(size_t i=0; i<n; ++i)
+  {
+    dot += a[i] * b[i];
+  }
+  return dot;
+}
+
 void sven::op_dot_impl(const Vector a, const Vector b, Scalar ab)
 {
   lock_guard<mutex> lk_a{*a._mtx}, lk_b{*b._mtx}, lk_ab{*ab._mtx};
-  double dot{0};
-  for(size_t i=0; i<a.n(); ++i)
-  {
-    dot += a._[i] * b._[i];
-  }
-  *ab._ = dot;
+  //double dot{0};
+  //for(size_t i=0; i<a.n(); ++i)
+  //{
+  //  dot += a._[i] * b._[i];
+  //}
+  *ab._ = dot(a.n(), a._, b._);
   *ab._state = ObjectState::SolidState;
   ab._cnd->notify_all();
 }
@@ -307,12 +319,17 @@ void sven::op_div_impl(const Scalar a, const Scalar b, Scalar ab)
 Matrix::Matrix(size_t m, size_t n)
   : _m{m}, _n{n},
     _{alloc<double>(m*n)}
-{}
+{
+  *_state = ObjectState::Materializing;
+  _cnd->notify_all();
+}
 
 Matrix Matrix::Zero(size_t m, size_t n)
 {
   Matrix A{m,n};
   A._[0:m*n] = 0;
+  *A._state = ObjectState::SolidState;
+  A._cnd->notify_all();
   return A;
 }
 
@@ -320,8 +337,33 @@ Matrix Matrix::Identity(size_t m, size_t n)
 {
   Matrix A = Matrix::Zero(m,n);
   for(size_t i=0; i<max(m,n); ++i){ A._[i*n + i] = 1; }
+  *A._state = ObjectState::SolidState;
+  A._cnd->notify_all();
   return A;
 }
 
-size_t Matrix::m(){ return _m; }
-size_t Matrix::n(){ return _n; }
+size_t Matrix::m() const { return _m; }
+size_t Matrix::n() const { return _n; }
+
+Vector sven::operator* (const Matrix &A, const Vector &x)
+{
+  if(A.n() != x.n()){ 
+    throw runtime_error("non-conformal operation:" + CRIME_SCENE); 
+  }
+
+  Vector Ax(x.n());
+  internal::Thunk t = [A,x,Ax](){ op_mul_impl(A,x,Ax); };
+  internal::RT::Q().push(t);
+  return Ax;
+}
+
+void sven::op_mul_impl(const Matrix A, const Vector x, Vector Ax)
+{
+  lock_guard<mutex> lk_A{*A._mtx}, lk_x{*x._mtx}, lk_Ax{*Ax._mtx};
+  for(size_t i=0; i<A.n(); ++i)
+  {
+    Ax._[i] = dot(A.n(), &A._[i*A.n()], x._);
+  }
+  *Ax._state = ObjectState::SolidState;
+  Ax._cnd->notify_all();
+}

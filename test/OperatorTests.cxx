@@ -1,3 +1,11 @@
+/******************************************************************************
+ * The Sven Project - All Rights Reserved
+ *
+ * 15 August 2014
+ * ~ ry
+ *
+ ******************************************************************************/
+
 #include "sven/CoreMath.hxx"
 #include "gtest/gtest.h"
 
@@ -121,4 +129,16 @@ TEST(Scalar, Div)
   Scalar c = a / b;
 
   EXPECT_DOUBLE_EQ(2.5, c());
+}
+
+//Matrix Tests ----------------------------------------------------------------
+
+TEST(Matrix, MulVec)
+{
+  Matrix A = Matrix::Identity(5,5);
+  Vector x{1,2,3,4,5};
+
+  Vector Ax = A * x;
+
+  EXPECT_TRUE(Ax == x);
 }

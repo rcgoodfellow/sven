@@ -26,7 +26,9 @@ namespace sven
 
 enum class ObjectState{Materializing, SolidState, Vapor};
 
+class Vector;
 class Scalar;
+class Matrix;
 
 class Vector
 {
@@ -53,6 +55,8 @@ class Vector
     friend void op_dot_impl(const Vector a, const Vector b, Scalar ab);
     friend void op_div_impl(const Vector a, const Scalar b, Vector ab);
     friend void op_mul_impl(const Vector a, const Scalar b, Vector ab);
+    
+    friend void op_mul_impl(const Matrix A, const Vector x, Vector mx);
 };
 
 Vector operator+ (const Vector &a, const Vector &b);
@@ -61,6 +65,7 @@ void op_plus_impl(const Vector a, const Vector b, Vector ab);
 Vector operator- (const Vector &a, const Vector &b);
 void op_sub_impl(const Vector a, const Vector b, Vector ab);
 
+double dot(size_t n, double *a, double *b);
 Scalar operator* (const Vector &a, const Vector &b);
 void op_dot_impl(const Vector a, const Vector b, Scalar ab);
 
@@ -114,12 +119,20 @@ class Matrix
     static Matrix Zero(size_t m, size_t n);
     static Matrix Identity(size_t m, size_t n);
 
-    size_t m(), n();
+    size_t m() const, n() const;
 
   private:
     size_t _m, _n;
     double *_;
+    ObjectState *_state{new ObjectState};
+    std::mutex *_mtx{new std::mutex};
+    std::condition_variable *_cnd{new std::condition_variable};
+
+    friend void op_mul_impl(const Matrix A, const Vector x, Vector Ax);
 };
+
+Vector operator* (const Matrix &A, const Vector &x);
+void op_mul_impl(const Matrix A, const Vector x, Vector Ax);
 
 }
 #endif
