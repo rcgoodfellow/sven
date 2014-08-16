@@ -22,9 +22,13 @@ link_directories(
 
 add_subdirectory(gtest)
 
-add_library(sven_math SHARED src/CoreMath.cxx)
+add_library(sven_math SHARED src/CoreMath.cxx src/Krylov.cxx)
 add_library(sven_runtime SHARED src/Runtime.cxx src/Utility.cxx)
 
 add_executable(OperatorTests test/OperatorTests.cxx)
 target_link_libraries(OperatorTests sven_math sven_runtime tbb gtest gtest_main 
+  pthread)
+
+add_executable(KrylovTests test/KrylovTests.cxx)
+target_link_libraries(KrylovTests sven_math sven_runtime tbb gtest gtest_main 
   pthread)

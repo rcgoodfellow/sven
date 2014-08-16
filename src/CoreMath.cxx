@@ -106,6 +106,15 @@ bool Vector::operator== (const Vector &x)
   lk_x.unlock();
   return result;
 }
+    
+std::ostream & sven::operator<< (std::ostream &o, Vector &x)
+{
+  for(size_t i=0; i<x._n; ++i)
+  {
+    o << x._[i] << " ";
+  }
+  return o;
+}
 
 Vector sven::operator+ (const Vector &a, const Vector &b)
 {
@@ -342,12 +351,12 @@ void sven::op_div_impl(const Scalar a, const Scalar b, Scalar ab)
 }
 
 //~= Matrix ~=-----------------------------------------------------------------
+
 Matrix::Matrix(size_t m, size_t n)
   : _m{m}, _n{n},
     _{alloc<double>(m*n)}
 {
   *_state = ObjectState::Materializing;
-  _cnd->notify_all();
 }
 
 Matrix::Matrix(size_t m, size_t n, vector<double> values)
@@ -412,6 +421,27 @@ bool Matrix::operator== (const Matrix &A)
   lk_me.unlock();
   lk_A.unlock();
   return result;
+}
+
+double & Matrix::operator()(size_t i, size_t j)
+{
+  unique_lock<mutex> lk{*_mtx};
+  switch(*_state)
+  {
+    case ObjectState::Materializing: 
+      _cnd->wait(lk);
+      lk.unlock();
+      return _[i*_n + j];
+
+    case ObjectState::SolidState:    
+      lk.unlock(); 
+      return _[i*_n + j];
+
+    case ObjectState::Vapor:         
+    default:                         
+      lk.unlock();
+      throw runtime_error("attempt to access vaporized object" + CRIME_SCENE);
+  }
 }
 
 size_t Matrix::m() const { return _m; }
@@ -559,4 +589,167 @@ bool Column::operator== (const Vector &x)
   }
   lk.unlock();
   return result;
+}
+
+//~=~ SparseMatrix ~=~---------------------------------------------------------
+
+SparseMatrix::SparseMatrix(size_t m, size_t n, size_t z)
+  : _m{m}, _n{n}, _z{z},
+    _r{alloc<size_t>(m)},
+    _c{alloc<size_t>(m*z)},
+    _v{alloc<double>(m*z)}
+{
+  *_state = ObjectState::Materializing;
+}
+    
+SparseMatrix::SparseMatrix(size_t m, size_t n, size_t z, 
+    std::vector<size_t> rs, std::vector<size_t> cs, 
+    std::vector<double> vs)
+  : SparseMatrix(m, n, z)
+{
+  if(rs.size() > m)
+  {
+    throw runtime_error("unreal sparse matrix cooridnates" + CRIME_SCENE);
+  }
+  if(cs.size() > m*n)
+  {
+    throw runtime_error("unreal sparse matrix cooridnates" + CRIME_SCENE);
+  }
+  if(vs.size() > m*n)
+  {
+    throw runtime_error("unreal sparse matrix cooridnates" + CRIME_SCENE);
+  }
+  if(vs.size() != cs.size())
+  {
+    throw runtime_error("unreal sparse matrix cooridnates" + CRIME_SCENE);
+  }
+
+  size_t j=0;
+  for(size_t i=0; i<rs.size(); ++i)
+  {
+    if(rs[i] > z)
+    {
+      throw runtime_error("unreal sparse matrix cooridnates" + CRIME_SCENE);
+    }
+    _r[i] = rs[i];
+    for(size_t k=0; k<rs[i]; ++k, ++j)
+    {
+      if(cs[j] > n)
+      {
+        throw runtime_error("unreal sparse matrix cooridnates" + CRIME_SCENE);
+      }
+      _c[i*z + k] = cs[j];
+      _v[i*z + k] = vs[j];
+    }
+  }
+
+  if(j != vs.size())
+  {
+    throw runtime_error("unreal sparse matrix cooridnates" + CRIME_SCENE);
+  }
+}
+
+SparseMatrix SparseMatrix::Identity(size_t m, size_t n, size_t z)
+{
+  SparseMatrix A(m, n, z);
+  for(size_t i=0; i<max(m,n); ++i)
+  {
+    A._r[i] = 1;
+    A._c[i*z] = i;
+    A._v[i*z] = 1;
+  }
+  *A._state = ObjectState::SolidState;
+  A._cnd->notify_all();
+  return A;
+}
+
+double & SparseMatrix::_at(size_t i, size_t j)
+{
+  for(size_t k=0; k<_r[i]; ++k)
+  {
+    if(_c[_z*i + k] == j){return _v[_z*i + k];}
+  }
+
+  throw runtime_error("unreal sparse matrix coordinates" + CRIME_SCENE);
+}
+
+double & SparseMatrix::operator() (size_t i, size_t j)
+{
+  if(i >= _m || j >= _n)
+  { 
+    throw runtime_error("unreal sparse matrix coordinates" + CRIME_SCENE);
+  }
+  unique_lock<mutex> lk{*_mtx};
+  switch(*_state)
+  {
+    case ObjectState::Materializing: 
+      _cnd->wait(lk);
+      //fallthrough
+
+    case ObjectState::SolidState:    
+      lk.unlock(); 
+      return _at(i, j);
+
+    case ObjectState::Vapor:         
+    default:                         
+      lk.unlock();
+      throw runtime_error("attempt to access vaporized object" + CRIME_SCENE);
+  }
+  
+}
+
+size_t SparseMatrix::m() const { return _m; }
+size_t SparseMatrix::n() const { return _n; }
+size_t SparseMatrix::z() const { return _z; }
+
+Vector sven::operator* (const SparseMatrix &A, const Vector &x)
+{
+  if(A.n() != x.n())
+  { 
+    throw runtime_error("non-conformal operation:" + CRIME_SCENE); 
+  }
+
+  Vector Ax(x.n());
+  internal::Thunk t = [A,x,Ax](){ op_mul_impl(A,x,Ax); };
+  internal::RT::Q().push(t);
+  return Ax;
+}
+
+void sven::multi_sparse_dot(size_t rz,
+    size_t *A_c, double *A_v,
+    double *x,
+    double *Ax,
+    CountdownLatch &cl)
+{
+  double d{0};
+  for(size_t i=0; i<rz; ++i)
+  {
+    d += A_v[i] * x[A_c[i]];
+  }
+  *Ax = d;
+  --cl;
+}
+
+void sven::op_mul_impl(const SparseMatrix A, const Vector x, Vector Ax)
+{
+  internal::Thunk th = [A,x,Ax]()
+  {
+    lock_guard<mutex> lk_A{*A._mtx}, lk_x{*x._mtx}, lk_Ax{*Ax._mtx};
+
+    CountdownLatch cl{static_cast<int>(A.n())};
+    for(size_t i=0; i<A.n(); ++i)
+    {
+      internal::Thunk t = [A,x,Ax,&cl,i]()
+      {
+        multi_sparse_dot(A._r[i], &A._c[i*A._z], &A._v[i*A._z], x._, &Ax._[i], 
+            cl);
+      };
+      internal::RT::Q().push(t);
+    }
+    cl.wait();
+    *Ax._state = ObjectState::SolidState;
+    Ax._cnd->notify_all();
+  };
+  
+  internal::RT::Q().push(th);
 }

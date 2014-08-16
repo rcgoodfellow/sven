@@ -20,6 +20,7 @@
 #include <memory>
 #include <stdexcept>
 #include <string>
+#include <iostream>
 
 namespace sven
 {
@@ -29,6 +30,7 @@ enum class ObjectState{Materializing, SolidState, Vapor};
 class Vector;
 class Scalar;
 class Matrix;
+class SparseMatrix;
 
 class Vector
 {
@@ -60,9 +62,15 @@ class Vector
     friend void op_mul_impl(const Vector a, const Scalar b, Vector ab);
     
     friend void op_mul_impl(const Matrix A, const Vector x, Vector mx);
+    
+    friend void op_mul_impl(const SparseMatrix A, const Vector x, Vector Ax);
 
     friend class Column;
+
+    friend std::ostream & operator<< (std::ostream &, Vector &x);
 };
+    
+std::ostream & operator<< (std::ostream &, Vector &x);
 
 Vector operator+ (const Vector &a, const Vector &b);
 void op_plus_impl(const Vector a, const Vector b, Vector ab);
@@ -151,6 +159,7 @@ class Matrix
     static Matrix Identity(size_t m, size_t n);
     bool operator==(const Matrix &A);
 
+    double & operator()(size_t i, size_t j);
     Column C(size_t index);
 
     size_t m() const, n() const;
@@ -172,6 +181,41 @@ void op_mul_impl(const Matrix A, const Vector x, Vector Ax);
 
 Matrix operator* (const Matrix &A, const Matrix &B);
 void op_mul_impl(const Matrix A, const Matrix B, Matrix AB);
+
+class SparseMatrix
+{
+  public:
+    SparseMatrix(size_t m, size_t n, size_t z);
+    SparseMatrix(size_t m, size_t n, size_t z, 
+        std::vector<size_t> rs, std::vector<size_t> cs, 
+        std::vector<double> vs);
+    static SparseMatrix Identity(size_t m, size_t n, size_t z);
+
+    double & operator()(size_t i, size_t j);
+
+    size_t m() const, n() const, z() const;
+
+  private:
+    size_t _m, _n, _z;
+    size_t *_r, *_c;
+    double *_v;
+    ObjectState *_state{new ObjectState};
+    std::shared_ptr<std::mutex> _mtx{new std::mutex};
+    std::shared_ptr<std::condition_variable> _cnd{new std::condition_variable};
+
+    double & _at(size_t i, size_t j);
+
+    friend void op_mul_impl(const SparseMatrix A, const Vector x, Vector Ax);
+};
+
+void multi_sparse_dot(size_t z,
+    size_t *A_c, double *A_v,
+    double *x,
+    double *Ax,
+    CountdownLatch &cl);
+
+Vector operator* (const SparseMatrix &A, const Vector &x);
+void op_mul_impl(const SparseMatrix A, const Vector x, Vector Ax);
 
 }
 #endif

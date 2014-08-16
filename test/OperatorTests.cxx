@@ -203,6 +203,8 @@ TEST(Matrix, Mul)
      7480,  6594,  1984,  7121,  7709});
 
   EXPECT_TRUE(AB == _AB_);
+
+  EXPECT_DOUBLE_EQ(16313, _AB_(3, 2));
 }
 
 TEST(Matrix, ColRef)
@@ -217,4 +219,43 @@ TEST(Matrix, ColRef)
   A.C(2) = Vector{2,2,2,2,2};
 
   EXPECT_TRUE(c2 == x2);
+}
+
+//Sparse Matrix Tests ---------------------------------------------------------
+
+TEST(SparseMatrix, Basics)
+{
+  SparseMatrix A = SparseMatrix::Identity(5,5,3);
+
+  EXPECT_EQ(A.m(), 5UL);
+  EXPECT_EQ(A.n(), 5UL);
+  EXPECT_EQ(A.z(), 3UL);
+
+  EXPECT_DOUBLE_EQ(1, A(4, 4));
+}
+
+TEST(SparseMatrix, SparseMatrixVecMul)
+{
+  SparseMatrix A = SparseMatrix::Identity(5,5,3);
+  Vector x{1,2,3,4,5};
+
+  Vector Ax = A * x;
+
+  EXPECT_TRUE(Ax == x);
+}
+
+TEST(SparseMatrix, SparseMatrixVecMul2)
+{
+  SparseMatrix A(5, 5, 3,
+      {1,   2,       2,       3,           2      },
+      {0,   1,  4,   2,  4,   1,  3,  4,   0,  4  },
+      {1.0, 1.0,7.0, 1.0,3.3, 2.2,1.0,1.1, 0.4,1.0});
+  
+  Vector x{1,2,3,4,5};
+
+  Vector Ax = A * x;
+
+  Vector _Ax_{1, 37, 19.5, 13.9, 5.4};
+
+  EXPECT_TRUE(Ax == _Ax_);
 }
