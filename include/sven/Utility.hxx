@@ -55,7 +55,7 @@ class CountdownLatch
 
 enum class ObjectState{Materializing, SolidState, Vapor};
 
-template<class A, class B>
+template<class A, class B=A>
 class OperandStasis
 {
   A a;
@@ -74,19 +74,24 @@ class OperandStasis
         a._cnd->wait(lk_a);
       }
 
-      lk_b.lock();
-      if(b.state() != ObjectState::SolidState)
+      if(a._mtx != b._mtx)
       {
-        lk_a.unlock();
-        b._cnd->wait(lk_b);
-        lk_a.lock();
+        lk_b.lock();
+        if(b.state() != ObjectState::SolidState)
+        {
+          lk_a.unlock();
+          b._cnd->wait(lk_b);
+          lk_a.lock();
+        }
       }
     }
 
-    ~OperandStasis()
+    OperandStasis(A a) : OperandStasis(a,a) {}
+
+    virtual ~OperandStasis()
     {
       lk_a.unlock();
-      lk_b.unlock();
+      if(a._mtx != b._mtx) { lk_b.unlock(); };
     }
   
 };

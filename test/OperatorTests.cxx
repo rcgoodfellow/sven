@@ -93,6 +93,16 @@ TEST(Vector, Dot)
   EXPECT_EQ(1*0+2*3+4*5+6*7+8*9, z()); 
 }
 
+TEST(Vector, Norm)
+{
+  Vector x{1,3,5,7,9};
+
+  Scalar nx = norm(x);
+  Scalar _nx_{12.845232578665129};
+
+  EXPECT_TRUE(_nx_ == nx);
+}
+
 //Scalar Tests ----------------------------------------------------------------
 
 TEST(Scalar, Add)

@@ -21,6 +21,7 @@
 #include <stdexcept>
 #include <string>
 #include <iostream>
+#include <cmath>
 
 namespace sven
 {
@@ -60,8 +61,10 @@ class Vector
     
     friend void op_mul_impl(const SparseMatrix A, const Vector x, Vector Ax);
 
+    friend Scalar norm(const Vector x);
+
     friend class Column;
-    friend class OperandStasis<Vector,Vector>;
+    friend class OperandStasis<Vector>;
     friend class OperandStasis<Vector,Matrix>;
     friend class OperandStasis<Matrix,Vector>;
     friend class OperandStasis<Scalar,Vector>;
@@ -71,6 +74,8 @@ class Vector
 
     friend std::ostream & operator<< (std::ostream &, Vector &x);
 };
+    
+Scalar norm(const Vector x);
     
 std::ostream & operator<< (std::ostream &, Vector &x);
 
@@ -107,6 +112,7 @@ class Scalar
     explicit Scalar(double value);
 
     double & operator()();
+    bool operator==(const Scalar &s);
     ObjectState state() const;
 
   private:
@@ -124,11 +130,15 @@ class Scalar
     friend void op_mul_impl(const Scalar a, const Scalar b, Scalar ab);
     friend void op_div_impl(const Scalar a, const Scalar b, Scalar ab);
     
-    friend class OperandStasis<Scalar,Scalar>;
+    friend class OperandStasis<Scalar>;
     friend class OperandStasis<Scalar,Vector>;
     friend class OperandStasis<Vector,Scalar>;
+
+    friend Scalar sqrt(const Scalar);
     
 };
+
+Scalar sqrt(const Scalar);
 
 Scalar operator+ (const Scalar &a, const Scalar &b);
 void op_plus_impl(const Scalar a, const Scalar b, Scalar ab);
@@ -183,7 +193,7 @@ class Matrix
     friend void op_mul_impl(const Matrix A, const Matrix B, Matrix AB);
 
     friend class Column;
-    friend class OperandStasis<Matrix,Matrix>;
+    friend class OperandStasis<Matrix>;
     friend class OperandStasis<Matrix,Vector>;
     friend class OperandStasis<Vector,Matrix>;
 };
@@ -220,7 +230,7 @@ class SparseMatrix
 
     friend void op_mul_impl(const SparseMatrix A, const Vector x, Vector Ax);
     
-    friend class OperandStasis<SparseMatrix,SparseMatrix>;
+    friend class OperandStasis<SparseMatrix>;
     friend class OperandStasis<Vector,SparseMatrix>;
     friend class OperandStasis<SparseMatrix,Vector>;
     

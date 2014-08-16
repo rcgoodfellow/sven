@@ -105,6 +105,11 @@ bool Vector::operator== (const Vector &x)
   lk_x.unlock();
   return result;
 }
+
+Scalar sven::norm(const Vector x)
+{
+  return sqrt(x * x);  
+}
     
 std::ostream & sven::operator<< (std::ostream &o, Vector &x)
 {
@@ -133,7 +138,7 @@ Vector sven::operator+ (const Vector &a, const Vector &b)
 
 void sven::op_plus_impl(const Vector a, const Vector b, Vector ab)
 {
-  OperandStasis<Vector,Vector> os{a,b};
+  OperandStasis<Vector> os{a,b};
   lock_guard<mutex> lk_ab{*ab._mtx};
 
   for(size_t i=0; i<a._n; ++i) { ab._[i] = a._[i] + b._[i]; }
@@ -157,7 +162,7 @@ Vector sven::operator- (const Vector &a, const Vector &b)
 
 void sven::op_sub_impl(const Vector a, const Vector b, Vector ab)
 {
-  OperandStasis<Vector,Vector> os{a,b};
+  OperandStasis<Vector> os{a,b};
   lock_guard<mutex> lk_ab{*ab._mtx};
 
   for(size_t i=0; i<a._n; ++i) { ab._[i] = a._[i] - b._[i]; }
@@ -203,7 +208,7 @@ double sven::dot(size_t n, double *a, double *b)
 
 void sven::op_dot_impl(const Vector a, const Vector b, Scalar ab)
 {
-  OperandStasis<Vector,Vector> os{a,b};
+  OperandStasis<Vector> os{a,b};
   lock_guard<mutex> lk_ab{*ab._mtx};
 
   *ab._ = dot(a.n(), a._, b._);
@@ -262,6 +267,13 @@ Scalar::Scalar(double value) : Scalar()
   *_state = ObjectState::SolidState;
 }
 
+Scalar sven::sqrt(const Scalar x)
+{
+  OperandStasis<Scalar> os(x, x);
+  Scalar s(::sqrt(*x._));
+  return s;
+}
+
 double & Scalar::operator()() 
 { 
   unique_lock<mutex> lk{*_mtx};
@@ -283,6 +295,12 @@ double & Scalar::operator()()
   }
 }
 
+bool Scalar::operator==(const Scalar &s)
+{
+  OperandStasis<Scalar> os{*this, s};
+  return *_ == *s._;
+}
+
 ObjectState Scalar::state() const { return *_state; }
 
 Scalar sven::operator+ (const Scalar &a, const Scalar &b)
@@ -295,7 +313,7 @@ Scalar sven::operator+ (const Scalar &a, const Scalar &b)
 
 void sven::op_plus_impl(const Scalar a, const Scalar b, Scalar ab)
 {
-  OperandStasis<Scalar,Scalar> os{a,b};
+  OperandStasis<Scalar> os{a,b};
   lock_guard<mutex> lk_ab{*ab._mtx};
 
   *ab._ = *a._ + *b._;
@@ -314,7 +332,7 @@ Scalar sven::operator- (const Scalar &a, const Scalar &b)
 
 void sven::op_sub_impl(const Scalar a, const Scalar b, Scalar ab)
 {
-  OperandStasis<Scalar,Scalar> os{a,b};
+  OperandStasis<Scalar> os{a,b};
   lock_guard<mutex> lk_ab{*ab._mtx};
 
   *ab._ = *a._ - *b._;
@@ -333,7 +351,7 @@ Scalar sven::operator* (const Scalar &a, const Scalar &b)
 
 void sven::op_mul_impl(const Scalar a, const Scalar b, Scalar ab)
 {
-  OperandStasis<Scalar,Scalar> os{a,b};
+  OperandStasis<Scalar> os{a,b};
   lock_guard<mutex> lk_ab{*ab._mtx};
 
   *ab._ = *a._ * *b._;
@@ -352,7 +370,7 @@ Scalar sven::operator/ (const Scalar &a, const Scalar &b)
 
 void sven::op_div_impl(const Scalar a, const Scalar b, Scalar ab)
 {
-  OperandStasis<Scalar,Scalar> os{a,b};
+  OperandStasis<Scalar> os{a,b};
   lock_guard<mutex> lk_ab{*ab._mtx};
 
   *ab._ = *a._ / *b._;
@@ -532,7 +550,7 @@ void sven::op_mul_impl(const Matrix A, const Matrix B, Matrix AB)
 {
   internal::Thunk th = [A,B,AB]()
   {
-    OperandStasis<Matrix,Matrix> os{A,B};
+    OperandStasis<Matrix> os{A,B};
     lock_guard<mutex> lk_AB{*AB._mtx};
     CountdownLatch cl{static_cast<int>(A._m*B._n)};
 

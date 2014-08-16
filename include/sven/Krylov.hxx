@@ -30,9 +30,9 @@ class Arnoldi
     size_t N() const, n() const;
     void operator()();
 
-    Vector r0;
 
   private:
+    Vector r0;
     size_t _n;
 
 };
