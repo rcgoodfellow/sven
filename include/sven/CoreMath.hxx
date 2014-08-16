@@ -50,9 +50,8 @@ class Vector
     size_t _n;
     double *_;
     std::shared_ptr<ObjectState> _state;
-    //ObjectState *_state;
-    std::mutex *_mtx;
-    std::condition_variable *_cnd;
+    std::shared_ptr<std::mutex> _mtx;
+    std::shared_ptr<std::condition_variable> _cnd;
 
     friend void op_plus_impl(const Vector a, const Vector b, Vector ab);
     friend void op_sub_impl(const Vector a, const Vector b, Vector ab);
@@ -79,6 +78,9 @@ void op_div_impl(const Vector a, const Scalar b, Vector ab);
 Vector operator* (const Vector &a, const Scalar &b);
 void op_mul_impl(const Vector a, const Scalar b, Vector ab);
 
+void multi_dot(size_t n, double *a, double *b, double *ab,
+    CountdownLatch &cl);
+
 class Scalar
 {
   public:
@@ -91,8 +93,8 @@ class Scalar
   private:
     double *_;
     ObjectState *_state{new ObjectState};
-    std::mutex *_mtx{new std::mutex};
-    std::condition_variable *_cnd{new std::condition_variable};
+    std::shared_ptr<std::mutex> _mtx{new std::mutex};
+    std::shared_ptr<std::condition_variable> _cnd{new std::condition_variable};
 
     friend void op_div_impl(const Vector a, const Scalar b, Vector ab);
     friend void op_mul_impl(const Vector a, const Scalar b, Vector ab);
@@ -129,8 +131,8 @@ class Matrix
     size_t _m, _n;
     double *_;
     ObjectState *_state{new ObjectState};
-    std::mutex *_mtx{new std::mutex};
-    std::condition_variable *_cnd{new std::condition_variable};
+    std::shared_ptr<std::mutex> _mtx{new std::mutex};
+    std::shared_ptr<std::condition_variable> _cnd{new std::condition_variable};
 
     friend void op_mul_impl(const Matrix A, const Vector x, Vector Ax);
 };

@@ -29,30 +29,6 @@ Vector::Vector(size_t n)
 { 
   *_state = ObjectState::Materializing;
 }
-  
-/*
-Vector::Vector(const Vector &x)
-{
-  _n = x._n;
-  _ = x._;
-  _state = x._state;
-  _mtx = x._mtx;
-  _cnd = x._cnd;
-}
-*/
-
-/*
-Vector & Vector::operator=(const Vector &x)
-{
-  _n = x._n;
-  _ = x._;
-  _state = x._state;
-  _mtx = x._mtx;
-  _cnd = x._cnd;
-
-  return *this;
-}
-*/
 
 Vector::Vector(initializer_list<double> xs)
   : Vector(xs.size())
@@ -405,13 +381,28 @@ Vector sven::operator* (const Matrix &A, const Vector &x)
   return Ax;
 }
 
+void sven::multi_dot(size_t n, double *a, double *b, double *ab, 
+    CountdownLatch &cl)
+{
+  *ab = dot(n, a, b);
+  --cl;
+}
+
 void sven::op_mul_impl(const Matrix A, const Vector x, Vector Ax)
 {
   lock_guard<mutex> lk_A{*A._mtx}, lk_x{*x._mtx}, lk_Ax{*Ax._mtx};
+  CountdownLatch cl{static_cast<int>(A.n())};
   for(size_t i=0; i<A.n(); ++i)
   {
-    Ax._[i] = dot(A.n(), &A._[i*A.n()], x._);
+    //Ax._[i] = dot(A.n(), &A._[i*A.n()], x._);
+    internal::Thunk t = [A, x, Ax, &cl, i]()
+    { 
+      multi_dot(A.n(), &A._[i*A.n()], x._, &Ax._[i], cl); 
+    };
+
+    internal::RT::Q().push(t);
   }
+  cl.wait();
   *Ax._state = ObjectState::SolidState;
   Ax._cnd->notify_all();
 }

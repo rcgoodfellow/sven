@@ -20,7 +20,7 @@ TEST(Vector, SubscriptAndSize)
 
   x = Vector::Zero(8); 
   EXPECT_EQ(ObjectState::SolidState, x.state());
-  EXPECT_EQ(x.n(), 8);
+  EXPECT_EQ(x.n(), 8UL);
 
   for(size_t i=0; i<x.n(); ++i) { EXPECT_DOUBLE_EQ(x(i), 0); }
 

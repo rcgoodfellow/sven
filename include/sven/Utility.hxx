@@ -20,7 +20,10 @@
 
 #define SVEN_DEFAULT_ALIGN 64
 
-#define CRIME_SCENE string(__FILE__) + string(":") + to_string(__LINE__) + string(":") + string(__func__)
+#define CRIME_SCENE \
+  string(__FILE__) + string(":") + \
+  to_string(__LINE__) + \
+  string(":") + string(__func__)
 
 namespace sven {
 
@@ -35,10 +38,18 @@ T* alloc(size_t sz)
 class CountdownLatch
 {
   public:
+    CountdownLatch(int);
+    void wait();
+    void set(int);
+    void operator--();
+    void operator--(int);
+    void operator++();
+    void operator++(int);
 
   private:
-    std::mutex *_mtx;
-    std::condition_variable *_cnd;
+    std::atomic<int> _cnt;
+    std::shared_ptr<std::mutex> _mtx{new std::mutex};
+    std::shared_ptr<std::condition_variable> _cnd{new std::condition_variable};
 };
 
 }
