@@ -43,7 +43,6 @@ Vector::Vector(initializer_list<double> xs)
 Vector Vector::Zero(size_t n)
 {
   Vector x(n);
-  //x._[0:n] = 0;
   for(size_t i=0; i<n; ++i)
   {
     x._[i] = 0;
@@ -109,10 +108,13 @@ bool Vector::operator== (const Vector &x)
     
 std::ostream & sven::operator<< (std::ostream &o, Vector &x)
 {
+  unique_lock<mutex> lk{*x._mtx};
+  if(x.state() != ObjectState::SolidState) { x._cnd->wait(lk); }
   for(size_t i=0; i<x._n; ++i)
   {
     o << x._[i] << " ";
   }
+  lk.unlock();
   return o;
 }
 
@@ -131,17 +133,13 @@ Vector sven::operator+ (const Vector &a, const Vector &b)
 
 void sven::op_plus_impl(const Vector a, const Vector b, Vector ab)
 {
-  lock_guard<mutex> lk_a{*a._mtx}, lk_b{*b._mtx}, lk_ab{*ab._mtx};
-  for(size_t i=0; i<a.n(); ++i)
-  { 
-    //ab._[0:ab.n()] = a._[0:a.n()] + b._[0:b.n()]; 
-    for(size_t i=0; i<ab.n(); ++i)
-    {
-      ab._[i] = a._[i] + b._[i]; 
-    }
-    *ab._state = ObjectState::SolidState;
-    ab._cnd->notify_all();
-  }
+  OperandStasis<Vector,Vector> os{a,b};
+  lock_guard<mutex> lk_ab{*ab._mtx};
+
+  for(size_t i=0; i<a._n; ++i) { ab._[i] = a._[i] + b._[i]; }
+
+  *ab._state = ObjectState::SolidState;
+  ab._cnd->notify_all();
 }
 
 Vector sven::operator- (const Vector &a, const Vector &b)
@@ -159,17 +157,13 @@ Vector sven::operator- (const Vector &a, const Vector &b)
 
 void sven::op_sub_impl(const Vector a, const Vector b, Vector ab)
 {
-  lock_guard<mutex> lk_a{*a._mtx}, lk_b{*b._mtx}, lk_ab{*ab._mtx};
-  for(size_t i=0; i<a.n(); ++i)
-  {
-    //ab._[0:ab.n()] = a._[0:a.n()] - b._[0:b.n()]; 
-    for(size_t i=0; i<ab.n(); ++i)
-    {
-      ab._[i] = a._[i] - b._[i]; 
-    }
-    *ab._state = ObjectState::SolidState;
-    ab._cnd->notify_all();
-  }
+  OperandStasis<Vector,Vector> os{a,b};
+  lock_guard<mutex> lk_ab{*ab._mtx};
+
+  for(size_t i=0; i<a._n; ++i) { ab._[i] = a._[i] - b._[i]; }
+
+  *ab._state = ObjectState::SolidState;
+  ab._cnd->notify_all();
 }
 
 
@@ -209,8 +203,11 @@ double sven::dot(size_t n, double *a, double *b)
 
 void sven::op_dot_impl(const Vector a, const Vector b, Scalar ab)
 {
-  lock_guard<mutex> lk_a{*a._mtx}, lk_b{*b._mtx}, lk_ab{*ab._mtx};
+  OperandStasis<Vector,Vector> os{a,b};
+  lock_guard<mutex> lk_ab{*ab._mtx};
+
   *ab._ = dot(a.n(), a._, b._);
+
   *ab._state = ObjectState::SolidState;
   ab._cnd->notify_all();
 }
@@ -225,12 +222,11 @@ Vector sven::operator/ (const Vector &a, const Scalar &b)
 
 void sven::op_div_impl(const Vector a, const Scalar b, Vector ab)
 {
-  lock_guard<mutex> lk_a{*a._mtx}, lk_b{*b._mtx}, lk_ab{*ab._mtx};
-  //ab._[0:a._n] = a._[0:a._n] / *b._;
-  for(size_t i=0; i<a._n; ++i)
-  {
-    ab._[i] = a._[i] / *b._;
-  }
+  OperandStasis<Vector,Scalar> os{a,b};
+  lock_guard<mutex> lk_ab{*ab._mtx};
+
+  for(size_t i=0; i<a._n; ++i) { ab._[i] = a._[i] / *b._; }
+
   *ab._state = ObjectState::SolidState;
   ab._cnd->notify_all();
 }
@@ -245,12 +241,11 @@ Vector sven::operator* (const Vector &a, const Scalar &b)
 
 void sven::op_mul_impl(const Vector a, const Scalar b, Vector ab)
 {
-  lock_guard<mutex> lk_a{*a._mtx}, lk_b{*b._mtx}, lk_ab{*ab._mtx};
-  //ab._[0:a._n] = a._[0:a._n] * *b._;
-  for(size_t i=0; i<a._n; ++i)
-  {
-    ab._[i] = a._[i] * *b._;
-  }
+  OperandStasis<Vector,Scalar> os{a,b};
+  lock_guard<mutex> lk_ab{*ab._mtx};
+  
+  for(size_t i=0; i<a._n; ++i) { ab._[i] = a._[i] * *b._; }
+
   *ab._state = ObjectState::SolidState;
   ab._cnd->notify_all();
 }
@@ -261,7 +256,11 @@ Scalar::Scalar() : _{alloc<double>(1)}
   *_state = ObjectState::Materializing;
 } 
 
-Scalar::Scalar(double value) : Scalar() { *_ = value; }
+Scalar::Scalar(double value) : Scalar() 
+{ 
+  *_ = value; 
+  *_state = ObjectState::SolidState;
+}
 
 double & Scalar::operator()() 
 { 
@@ -296,8 +295,11 @@ Scalar sven::operator+ (const Scalar &a, const Scalar &b)
 
 void sven::op_plus_impl(const Scalar a, const Scalar b, Scalar ab)
 {
-  lock_guard<mutex> lk_a{*a._mtx}, lk_b{*b._mtx}, lk_ab{*ab._mtx};
+  OperandStasis<Scalar,Scalar> os{a,b};
+  lock_guard<mutex> lk_ab{*ab._mtx};
+
   *ab._ = *a._ + *b._;
+
   *ab._state = ObjectState::SolidState;
   ab._cnd->notify_all();
 }
@@ -312,8 +314,11 @@ Scalar sven::operator- (const Scalar &a, const Scalar &b)
 
 void sven::op_sub_impl(const Scalar a, const Scalar b, Scalar ab)
 {
-  lock_guard<mutex> lk_a{*a._mtx}, lk_b{*b._mtx}, lk_ab{*ab._mtx};
+  OperandStasis<Scalar,Scalar> os{a,b};
+  lock_guard<mutex> lk_ab{*ab._mtx};
+
   *ab._ = *a._ - *b._;
+
   *ab._state = ObjectState::SolidState;
   ab._cnd->notify_all();
 }
@@ -328,8 +333,11 @@ Scalar sven::operator* (const Scalar &a, const Scalar &b)
 
 void sven::op_mul_impl(const Scalar a, const Scalar b, Scalar ab)
 {
-  lock_guard<mutex> lk_a{*a._mtx}, lk_b{*b._mtx}, lk_ab{*ab._mtx};
+  OperandStasis<Scalar,Scalar> os{a,b};
+  lock_guard<mutex> lk_ab{*ab._mtx};
+
   *ab._ = *a._ * *b._;
+
   *ab._state = ObjectState::SolidState;
   ab._cnd->notify_all();
 }
@@ -344,8 +352,11 @@ Scalar sven::operator/ (const Scalar &a, const Scalar &b)
 
 void sven::op_div_impl(const Scalar a, const Scalar b, Scalar ab)
 {
-  lock_guard<mutex> lk_a{*a._mtx}, lk_b{*b._mtx}, lk_ab{*ab._mtx};
+  OperandStasis<Scalar,Scalar> os{a,b};
+  lock_guard<mutex> lk_ab{*ab._mtx};
+
   *ab._ = *a._ / *b._;
+
   *ab._state = ObjectState::SolidState;
   ab._cnd->notify_all();
 }
@@ -375,7 +386,6 @@ Matrix::Matrix(size_t m, size_t n, vector<double> values)
 Matrix Matrix::Zero(size_t m, size_t n)
 {
   Matrix A{m,n};
-  //A._[0:m*n] = 0;
   for(size_t i=0; i<m*n; ++i)
   {
     A._[i] = 0;
@@ -446,6 +456,7 @@ double & Matrix::operator()(size_t i, size_t j)
 
 size_t Matrix::m() const { return _m; }
 size_t Matrix::n() const { return _n; }
+ObjectState Matrix::state() const { return *_state; }
 
 Vector sven::operator* (const Matrix &A, const Vector &x)
 {
@@ -483,9 +494,10 @@ void sven::op_mul_impl(const Matrix A, const Vector x, Vector Ax)
 {
   internal::Thunk th = [A,x,Ax]()
   {
-    lock_guard<mutex> lk_A{*A._mtx}, lk_x{*x._mtx}, lk_Ax{*Ax._mtx};
-
+    OperandStasis<Matrix,Vector> os{A,x};
+    lock_guard<mutex> lk_Ax{*Ax._mtx};
     CountdownLatch cl{static_cast<int>(A.n())};
+
     for(size_t i=0; i<A.n(); ++i)
     {
       internal::Thunk t = [A, x, Ax, &cl, i]()
@@ -520,8 +532,10 @@ void sven::op_mul_impl(const Matrix A, const Matrix B, Matrix AB)
 {
   internal::Thunk th = [A,B,AB]()
   {
-    lock_guard<mutex> lk_A{*A._mtx}, lk_B{*B._mtx}, lk_AB{*AB._mtx};
+    OperandStasis<Matrix,Matrix> os{A,B};
+    lock_guard<mutex> lk_AB{*AB._mtx};
     CountdownLatch cl{static_cast<int>(A._m*B._n)};
+
     for(size_t i=0; i<A._m; ++i)
     {
       for(size_t j=0; j<B._n; ++j)
@@ -647,6 +661,9 @@ SparseMatrix::SparseMatrix(size_t m, size_t n, size_t z,
   {
     throw runtime_error("unreal sparse matrix cooridnates" + CRIME_SCENE);
   }
+  
+  *_state = ObjectState::SolidState;
+  _cnd->notify_all();
 }
 
 SparseMatrix SparseMatrix::Identity(size_t m, size_t n, size_t z)
@@ -701,6 +718,7 @@ double & SparseMatrix::operator() (size_t i, size_t j)
 size_t SparseMatrix::m() const { return _m; }
 size_t SparseMatrix::n() const { return _n; }
 size_t SparseMatrix::z() const { return _z; }
+ObjectState SparseMatrix::state() const { return *_state; }
 
 Vector sven::operator* (const SparseMatrix &A, const Vector &x)
 {
@@ -734,9 +752,10 @@ void sven::op_mul_impl(const SparseMatrix A, const Vector x, Vector Ax)
 {
   internal::Thunk th = [A,x,Ax]()
   {
-    lock_guard<mutex> lk_A{*A._mtx}, lk_x{*x._mtx}, lk_Ax{*Ax._mtx};
-
+    OperandStasis<SparseMatrix,Vector> os{A,x};
+    lock_guard<mutex> lk_Ax{*Ax._mtx};
     CountdownLatch cl{static_cast<int>(A.n())};
+
     for(size_t i=0; i<A.n(); ++i)
     {
       internal::Thunk t = [A,x,Ax,&cl,i]()

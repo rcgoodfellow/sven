@@ -21,15 +21,19 @@ class Arnoldi
 {
   public:
     Arnoldi() = delete;
-    Arnoldi(size_t N, size_t n, Vector x0);
+    Arnoldi(size_t n, SparseMatrix A, Vector x0, Vector b);
 
     Matrix Q, H;
-    Vector x0;
+    SparseMatrix A;
+    Vector x0, b;
 
     size_t N() const, n() const;
+    void operator()();
+
+    Vector r0;
 
   private:
-    size_t _N, _n;
+    size_t _n;
 
 };
 

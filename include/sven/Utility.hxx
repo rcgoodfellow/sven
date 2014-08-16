@@ -17,13 +17,14 @@
 #include <condition_variable>
 #include <atomic>
 #include <mm_malloc.h>
+#include <string>
 
 #define SVEN_DEFAULT_ALIGN 64
 
 #define CRIME_SCENE \
-  string(__FILE__) + string(":") + \
-  to_string(__LINE__) + \
-  string(":") + string(__func__)
+  std::string(__FILE__) + std::string(":") + \
+  std::to_string(__LINE__) + \
+  std::string(":") + std::string(__func__)
 
 namespace sven {
 
@@ -51,6 +52,45 @@ class CountdownLatch
     std::shared_ptr<std::mutex> _mtx{new std::mutex};
     std::shared_ptr<std::condition_variable> _cnd{new std::condition_variable};
 };
+
+enum class ObjectState{Materializing, SolidState, Vapor};
+
+template<class A, class B>
+class OperandStasis
+{
+  A a;
+  B b;
+
+  std::unique_lock<std::mutex> lk_a, lk_b;
+
+  public:
+    OperandStasis(A a, B b) 
+      : a{a}, b{b}, 
+        lk_a{*a._mtx, std::defer_lock}, lk_b{*b._mtx, std::defer_lock}
+    {
+      lk_a.lock();
+      if(a.state() != ObjectState::SolidState)
+      {
+        a._cnd->wait(lk_a);
+      }
+
+      lk_b.lock();
+      if(b.state() != ObjectState::SolidState)
+      {
+        lk_a.unlock();
+        b._cnd->wait(lk_b);
+        lk_a.lock();
+      }
+    }
+
+    ~OperandStasis()
+    {
+      lk_a.unlock();
+      lk_b.unlock();
+    }
+  
+};
+
 
 }
 

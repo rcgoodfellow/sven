@@ -25,8 +25,6 @@
 namespace sven
 {
 
-enum class ObjectState{Materializing, SolidState, Vapor};
-
 class Vector;
 class Scalar;
 class Matrix;
@@ -39,9 +37,6 @@ class Vector
     explicit Vector(size_t n);
     explicit Vector(std::initializer_list<double>);
     static Vector Zero(size_t n);
-
-    //Vector(const Vector &);
-    //Vector & operator=(const Vector &);
 
     size_t n() const;
     double & operator()(size_t i);
@@ -66,6 +61,13 @@ class Vector
     friend void op_mul_impl(const SparseMatrix A, const Vector x, Vector Ax);
 
     friend class Column;
+    friend class OperandStasis<Vector,Vector>;
+    friend class OperandStasis<Vector,Matrix>;
+    friend class OperandStasis<Matrix,Vector>;
+    friend class OperandStasis<Scalar,Vector>;
+    friend class OperandStasis<Vector,Scalar>;
+    friend class OperandStasis<Vector,SparseMatrix>;
+    friend class OperandStasis<SparseMatrix,Vector>;
 
     friend std::ostream & operator<< (std::ostream &, Vector &x);
 };
@@ -121,6 +123,11 @@ class Scalar
     friend void op_sub_impl (const Scalar a, const Scalar b, Scalar ab);
     friend void op_mul_impl(const Scalar a, const Scalar b, Scalar ab);
     friend void op_div_impl(const Scalar a, const Scalar b, Scalar ab);
+    
+    friend class OperandStasis<Scalar,Scalar>;
+    friend class OperandStasis<Scalar,Vector>;
+    friend class OperandStasis<Vector,Scalar>;
+    
 };
 
 Scalar operator+ (const Scalar &a, const Scalar &b);
@@ -163,6 +170,7 @@ class Matrix
     Column C(size_t index);
 
     size_t m() const, n() const;
+    ObjectState state() const;
 
   private:
     size_t _m, _n;
@@ -173,7 +181,11 @@ class Matrix
 
     friend void op_mul_impl(const Matrix A, const Vector x, Vector Ax);
     friend void op_mul_impl(const Matrix A, const Matrix B, Matrix AB);
+
     friend class Column;
+    friend class OperandStasis<Matrix,Matrix>;
+    friend class OperandStasis<Matrix,Vector>;
+    friend class OperandStasis<Vector,Matrix>;
 };
 
 Vector operator* (const Matrix &A, const Vector &x);
@@ -194,6 +206,7 @@ class SparseMatrix
     double & operator()(size_t i, size_t j);
 
     size_t m() const, n() const, z() const;
+    ObjectState state() const;
 
   private:
     size_t _m, _n, _z;
@@ -206,6 +219,11 @@ class SparseMatrix
     double & _at(size_t i, size_t j);
 
     friend void op_mul_impl(const SparseMatrix A, const Vector x, Vector Ax);
+    
+    friend class OperandStasis<SparseMatrix,SparseMatrix>;
+    friend class OperandStasis<Vector,SparseMatrix>;
+    friend class OperandStasis<SparseMatrix,Vector>;
+    
 };
 
 void multi_sparse_dot(size_t z,
