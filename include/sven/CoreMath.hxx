@@ -60,6 +60,8 @@ class Vector
     friend void op_mul_impl(const Vector a, const Scalar b, Vector ab);
     
     friend void op_mul_impl(const Matrix A, const Vector x, Vector mx);
+
+    friend class Column;
 };
 
 Vector operator+ (const Vector &a, const Vector &b);
@@ -125,6 +127,21 @@ void op_mul_impl(const Scalar a, const Scalar b, Scalar ab);
 Scalar operator/ (const Scalar &a, const Scalar &b);
 void op_div_impl (const Scalar a, const Scalar b, Scalar ab);
 
+class Column
+{
+  public:
+    Column() = delete;
+    Column & operator= (const Vector &);
+    bool operator== (const Vector &);
+
+  private:
+    Column(Matrix *origin, size_t index);
+    Matrix *_origin;
+    size_t _index;
+
+    friend class Matrix;
+};
+
 class Matrix
 {
   public:
@@ -133,6 +150,8 @@ class Matrix
     static Matrix Zero(size_t m, size_t n);
     static Matrix Identity(size_t m, size_t n);
     bool operator==(const Matrix &A);
+
+    Column C(size_t index);
 
     size_t m() const, n() const;
 
@@ -145,6 +164,7 @@ class Matrix
 
     friend void op_mul_impl(const Matrix A, const Vector x, Vector Ax);
     friend void op_mul_impl(const Matrix A, const Matrix B, Matrix AB);
+    friend class Column;
 };
 
 Vector operator* (const Matrix &A, const Vector &x);

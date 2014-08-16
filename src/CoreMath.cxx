@@ -515,3 +515,48 @@ void sven::op_mul_impl(const Matrix A, const Matrix B, Matrix AB)
   internal::RT::Q().push(th);
 }
 
+Column Matrix::C(size_t index)
+{
+  return Column(this, index);
+}
+
+//~=~ Column ~=~---------------------------------------------------------------
+
+Column::Column(Matrix *origin, size_t index)
+  : _origin{origin}, _index{index}
+{}
+    
+Column & Column::operator= (const Vector &x)
+{
+
+  unique_lock<mutex> lk{*x._mtx};
+  if(_origin->_m != x._n)
+  { 
+    lk.unlock();
+    throw runtime_error("non-conformal operation:" + CRIME_SCENE); 
+  }
+  if(*x._state != ObjectState::SolidState) { x._cnd->wait(lk); }
+
+  for(size_t i=0; i<_origin->_m; ++i)
+  {
+    _origin->_[i*_origin->_n + _index] = x._[i]; 
+  }
+  lk.unlock();
+  return *this;
+}
+
+bool Column::operator== (const Vector &x)
+{
+  unique_lock<mutex> lk{*x._mtx};
+  if(*x._state != ObjectState::SolidState) { x._cnd->wait(lk); }
+  
+  if(_origin->_m != x._n) { lk.unlock(); return false; }
+
+  bool result{true};
+  for(size_t i=0; i<_origin->_m; ++i)
+  {
+    if(_origin->_[i*_origin->_n + _index] != x._[i]){ result = false; break; }
+  }
+  lk.unlock();
+  return result;
+}

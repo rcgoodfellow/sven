@@ -204,3 +204,17 @@ TEST(Matrix, Mul)
 
   EXPECT_TRUE(AB == _AB_);
 }
+
+TEST(Matrix, ColRef)
+{
+  Matrix A = Matrix::Identity(5,5);    
+  Vector x1{0,0,1,0,0},
+         x2{2,2,2,2,2};
+  
+  Column c2 = A.C(2);
+  EXPECT_TRUE(c2 == x1);
+
+  A.C(2) = Vector{2,2,2,2,2};
+
+  EXPECT_TRUE(c2 == x2);
+}
