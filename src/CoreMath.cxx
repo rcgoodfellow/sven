@@ -451,20 +451,26 @@ void sven::multi_dot(size_t n,
 
 void sven::op_mul_impl(const Matrix A, const Vector x, Vector Ax)
 {
-  lock_guard<mutex> lk_A{*A._mtx}, lk_x{*x._mtx}, lk_Ax{*Ax._mtx};
-  CountdownLatch cl{static_cast<int>(A.n())};
-  for(size_t i=0; i<A.n(); ++i)
+  internal::Thunk th = [A,x,Ax]()
   {
-    internal::Thunk t = [A, x, Ax, &cl, i]()
-    { 
-      multi_dot(A.n(), &A._[i*A.n()], x._, &Ax._[i], cl); 
-    };
+    lock_guard<mutex> lk_A{*A._mtx}, lk_x{*x._mtx}, lk_Ax{*Ax._mtx};
 
-    internal::RT::Q().push(t);
-  }
-  cl.wait();
-  *Ax._state = ObjectState::SolidState;
-  Ax._cnd->notify_all();
+    CountdownLatch cl{static_cast<int>(A.n())};
+    for(size_t i=0; i<A.n(); ++i)
+    {
+      internal::Thunk t = [A, x, Ax, &cl, i]()
+      { 
+        multi_dot(A.n(), &A._[i*A.n()], x._, &Ax._[i], cl); 
+      };
+
+      internal::RT::Q().push(t);
+    }
+    cl.wait();
+    *Ax._state = ObjectState::SolidState;
+    Ax._cnd->notify_all();
+  };
+
+  internal::RT::Q().push(th);
 }
 
 Matrix sven::operator* (const Matrix &A, const Matrix &B)
@@ -482,25 +488,30 @@ Matrix sven::operator* (const Matrix &A, const Matrix &B)
 
 void sven::op_mul_impl(const Matrix A, const Matrix B, Matrix AB)
 {
-  lock_guard<mutex> lk_A{*A._mtx}, lk_B{*B._mtx}, lk_AB{*AB._mtx};
-  CountdownLatch cl{static_cast<int>(A._m*B._n)};
-  for(size_t i=0; i<A._m; ++i)
+  internal::Thunk th = [A,B,AB]()
   {
-    for(size_t j=0; j<B._n; ++j)
+    lock_guard<mutex> lk_A{*A._mtx}, lk_B{*B._mtx}, lk_AB{*AB._mtx};
+    CountdownLatch cl{static_cast<int>(A._m*B._n)};
+    for(size_t i=0; i<A._m; ++i)
     {
-      internal::Thunk t = [A, B, AB, &cl, i, j]()
+      for(size_t j=0; j<B._n; ++j)
       {
-        multi_dot(A._n, 
-            &A._[i*A._n], 1, 
-            &B._[j], B._n, 
-            &AB._[i*A._n + j], cl);
-      };
+        internal::Thunk t = [A, B, AB, &cl, i, j]()
+        {
+          multi_dot(A._n, 
+              &A._[i*A._n], 1, 
+              &B._[j], B._n, 
+              &AB._[i*A._n + j], cl);
+        };
 
-      internal::RT::Q().push(t);
+        internal::RT::Q().push(t);
+      }
     }
-  }
-  cl.wait();
-  *AB._state = ObjectState::SolidState;
-  AB._cnd->notify_all();
+    cl.wait();
+    *AB._state = ObjectState::SolidState;
+    AB._cnd->notify_all();
+  };
+
+  internal::RT::Q().push(th);
 }
 
