@@ -142,3 +142,10 @@ TEST(Matrix, MulVec)
 
   EXPECT_TRUE(Ax == x);
 }
+
+TEST(Matrix, Mul)
+{
+  Matrix A = Matrix::Identity(4,7);
+
+  //TODO: You are also here
+}

@@ -13,6 +13,10 @@
  *****************************************************************************/
 
 #include <cstddef>
+#include <mutex>
+#include <condition_variable>
+#include <atomic>
+#include <mm_malloc.h>
 
 #define SVEN_DEFAULT_ALIGN 64
 
@@ -27,6 +31,15 @@ T* alloc(size_t sz)
 {
   return (T*)_mm_malloc(sizeof(T)*sz, SVEN_DEFAULT_ALIGN);
 }
+
+class CountdownLatch
+{
+  public:
+
+  private:
+    std::mutex *_mtx;
+    std::condition_variable *_cnd;
+};
 
 }
 

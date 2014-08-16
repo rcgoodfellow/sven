@@ -38,6 +38,9 @@ class Vector
     explicit Vector(std::initializer_list<double>);
     static Vector Zero(size_t n);
 
+    //Vector(const Vector &);
+    //Vector & operator=(const Vector &);
+
     size_t n() const;
     double & operator()(size_t i);
     ObjectState state() const;
@@ -46,9 +49,10 @@ class Vector
   private:
     size_t _n;
     double *_;
-    ObjectState *_state{new ObjectState};
-    std::mutex *_mtx{new std::mutex};
-    std::condition_variable *_cnd{new std::condition_variable};
+    std::shared_ptr<ObjectState> _state;
+    //ObjectState *_state;
+    std::mutex *_mtx;
+    std::condition_variable *_cnd;
 
     friend void op_plus_impl(const Vector a, const Vector b, Vector ab);
     friend void op_sub_impl(const Vector a, const Vector b, Vector ab);
@@ -133,6 +137,9 @@ class Matrix
 
 Vector operator* (const Matrix &A, const Vector &x);
 void op_mul_impl(const Matrix A, const Vector x, Vector Ax);
+
+Matrix operator* (const Matrix &A, const Matrix &B);
+void op_mul_impl(const Matrix A, const Matrix B, Matrix AB);
 
 }
 #endif

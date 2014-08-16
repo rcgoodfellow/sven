@@ -15,15 +15,44 @@ using std::move;
 using std::unique_lock;
 using std::lock_guard;
 using std::mutex;
+using std::condition_variable;
 using std::runtime_error;
 using std::string;
 using std::to_string;
 
 //~= Vector ~=-----------------------------------------------------------------
-Vector::Vector(size_t n) : _n{n}, _{alloc<double>(n)}
+Vector::Vector(size_t n) 
+  : _n{n}, _{alloc<double>(n)},
+    _state{new ObjectState},
+    _mtx{new mutex},
+    _cnd{new condition_variable}
 { 
   *_state = ObjectState::Materializing;
 }
+  
+/*
+Vector::Vector(const Vector &x)
+{
+  _n = x._n;
+  _ = x._;
+  _state = x._state;
+  _mtx = x._mtx;
+  _cnd = x._cnd;
+}
+*/
+
+/*
+Vector & Vector::operator=(const Vector &x)
+{
+  _n = x._n;
+  _ = x._;
+  _state = x._state;
+  _mtx = x._mtx;
+  _cnd = x._cnd;
+
+  return *this;
+}
+*/
 
 Vector::Vector(initializer_list<double> xs)
   : Vector(xs.size())
@@ -37,10 +66,14 @@ Vector::Vector(initializer_list<double> xs)
 Vector Vector::Zero(size_t n)
 {
   Vector x(n);
-  x._[0:n] = 0;
+  //x._[0:n] = 0;
+  for(size_t i=0; i<n; ++i)
+  {
+    x._[i] = 0;
+  }
   *x._state = ObjectState::SolidState;
   x._cnd->notify_all();
-  return move(x);
+  return x;
 }
 
 size_t Vector::n() const { return _n; }
@@ -122,7 +155,11 @@ void sven::op_plus_impl(const Vector a, const Vector b, Vector ab)
   lock_guard<mutex> lk_a{*a._mtx}, lk_b{*b._mtx}, lk_ab{*ab._mtx};
   for(size_t i=0; i<a.n(); ++i)
   { 
-    ab._[0:ab.n()] = a._[0:a.n()] + b._[0:b.n()]; 
+    //ab._[0:ab.n()] = a._[0:a.n()] + b._[0:b.n()]; 
+    for(size_t i=0; i<ab.n(); ++i)
+    {
+      ab._[i] = a._[i] + b._[i]; 
+    }
     *ab._state = ObjectState::SolidState;
     ab._cnd->notify_all();
   }
@@ -146,7 +183,11 @@ void sven::op_sub_impl(const Vector a, const Vector b, Vector ab)
   lock_guard<mutex> lk_a{*a._mtx}, lk_b{*b._mtx}, lk_ab{*ab._mtx};
   for(size_t i=0; i<a.n(); ++i)
   {
-    ab._[0:ab.n()] = a._[0:a.n()] - b._[0:b.n()]; 
+    //ab._[0:ab.n()] = a._[0:a.n()] - b._[0:b.n()]; 
+    for(size_t i=0; i<ab.n(); ++i)
+    {
+      ab._[i] = a._[i] - b._[i]; 
+    }
     *ab._state = ObjectState::SolidState;
     ab._cnd->notify_all();
   }
@@ -178,11 +219,6 @@ double sven::dot(size_t n, double *a, double *b)
 void sven::op_dot_impl(const Vector a, const Vector b, Scalar ab)
 {
   lock_guard<mutex> lk_a{*a._mtx}, lk_b{*b._mtx}, lk_ab{*ab._mtx};
-  //double dot{0};
-  //for(size_t i=0; i<a.n(); ++i)
-  //{
-  //  dot += a._[i] * b._[i];
-  //}
   *ab._ = dot(a.n(), a._, b._);
   *ab._state = ObjectState::SolidState;
   ab._cnd->notify_all();
@@ -199,7 +235,11 @@ Vector sven::operator/ (const Vector &a, const Scalar &b)
 void sven::op_div_impl(const Vector a, const Scalar b, Vector ab)
 {
   lock_guard<mutex> lk_a{*a._mtx}, lk_b{*b._mtx}, lk_ab{*ab._mtx};
-  ab._[0:a._n] = a._[0:a._n] / *b._;
+  //ab._[0:a._n] = a._[0:a._n] / *b._;
+  for(size_t i=0; i<a._n; ++i)
+  {
+    ab._[i] = a._[i] / *b._;
+  }
   *ab._state = ObjectState::SolidState;
   ab._cnd->notify_all();
 }
@@ -215,7 +255,11 @@ Vector sven::operator* (const Vector &a, const Scalar &b)
 void sven::op_mul_impl(const Vector a, const Scalar b, Vector ab)
 {
   lock_guard<mutex> lk_a{*a._mtx}, lk_b{*b._mtx}, lk_ab{*ab._mtx};
-  ab._[0:a._n] = a._[0:a._n] * *b._;
+  //ab._[0:a._n] = a._[0:a._n] * *b._;
+  for(size_t i=0; i<a._n; ++i)
+  {
+    ab._[i] = a._[i] * *b._;
+  }
   *ab._state = ObjectState::SolidState;
   ab._cnd->notify_all();
 }
@@ -327,7 +371,11 @@ Matrix::Matrix(size_t m, size_t n)
 Matrix Matrix::Zero(size_t m, size_t n)
 {
   Matrix A{m,n};
-  A._[0:m*n] = 0;
+  //A._[0:m*n] = 0;
+  for(size_t i=0; i<m*n; ++i)
+  {
+    A._[i] = 0;
+  }
   *A._state = ObjectState::SolidState;
   A._cnd->notify_all();
   return A;
@@ -366,4 +414,22 @@ void sven::op_mul_impl(const Matrix A, const Vector x, Vector Ax)
   }
   *Ax._state = ObjectState::SolidState;
   Ax._cnd->notify_all();
+}
+
+Matrix sven::operator* (const Matrix &A, const Matrix &B)
+{
+  if(A.n() != B.m()){ 
+    throw runtime_error("non-conformal operation:" + CRIME_SCENE); 
+  }
+
+  Matrix AB(A.m(), B.n());
+  internal::Thunk t = [A,B,AB](){ op_mul_impl(A,B,AB); };
+  internal::RT::Q().push(t);
+  return AB;
+
+}
+
+void sven::op_mul_impl(const Matrix A, const Matrix B, Matrix AB)
+{
+  //TODO: You are here!
 }
