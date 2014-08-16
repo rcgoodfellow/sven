@@ -27,7 +27,7 @@ void CountdownLatch::set(int count){ _cnt = count; }
 
 void CountdownLatch::operator--()
 {
-  _cnt--;
+  --_cnt;
   if(_cnt <= 0){_cnd->notify_all();}
   if(_cnt < 0){ _cnt = 0; }
 }

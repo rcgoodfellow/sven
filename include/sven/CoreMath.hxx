@@ -68,6 +68,7 @@ void op_plus_impl(const Vector a, const Vector b, Vector ab);
 Vector operator- (const Vector &a, const Vector &b);
 void op_sub_impl(const Vector a, const Vector b, Vector ab);
 
+double dot(size_t n, double *a, size_t a_stride, double *b, size_t b_stride);
 double dot(size_t n, double *a, double *b);
 Scalar operator* (const Vector &a, const Vector &b);
 void op_dot_impl(const Vector a, const Vector b, Scalar ab);
@@ -77,6 +78,12 @@ void op_div_impl(const Vector a, const Scalar b, Vector ab);
 
 Vector operator* (const Vector &a, const Scalar &b);
 void op_mul_impl(const Vector a, const Scalar b, Vector ab);
+
+void multi_dot(size_t n, 
+    double *a, size_t a_stride,
+    double *b, size_t b_stride,
+    double *ab,
+    CountdownLatch &cl);
 
 void multi_dot(size_t n, double *a, double *b, double *ab,
     CountdownLatch &cl);
@@ -122,8 +129,10 @@ class Matrix
 {
   public:
     Matrix(size_t m, size_t n);
+    Matrix(size_t m, size_t n, std::vector<double> values);
     static Matrix Zero(size_t m, size_t n);
     static Matrix Identity(size_t m, size_t n);
+    bool operator==(const Matrix &A);
 
     size_t m() const, n() const;
 
@@ -135,6 +144,7 @@ class Matrix
     std::shared_ptr<std::condition_variable> _cnd{new std::condition_variable};
 
     friend void op_mul_impl(const Matrix A, const Vector x, Vector Ax);
+    friend void op_mul_impl(const Matrix A, const Matrix B, Matrix AB);
 };
 
 Vector operator* (const Matrix &A, const Vector &x);

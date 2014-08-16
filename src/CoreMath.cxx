@@ -19,6 +19,7 @@ using std::condition_variable;
 using std::runtime_error;
 using std::string;
 using std::to_string;
+using std::vector;
 
 //~= Vector ~=-----------------------------------------------------------------
 Vector::Vector(size_t n) 
@@ -77,8 +78,6 @@ double & Vector::operator()(size_t i)
 
 ObjectState Vector::state() const { return *_state; }
 
-#include <iostream>
-
 bool Vector::operator== (const Vector &x)
 {
   unique_lock<mutex> lk_me{*_mtx}, lk_x{*x._mtx};
@@ -97,20 +96,15 @@ bool Vector::operator== (const Vector &x)
 
   if(x._n != _n){ return false; }
 
+  bool result{true};
   for(size_t i=0; i<_n; ++i)
   {
-    if(x._[i] != _[i]) 
-    { 
-      std::cout << i << std::endl;
-      std::cout << x._[i] << std::endl;
-      std::cout << _[i] << std::endl;
-      return false; 
-    }  
+    if(x._[i] != _[i]) { result = false; break; }  
   }
 
   lk_me.unlock();
   lk_x.unlock();
-  return true;
+  return result;
 }
 
 Vector sven::operator+ (const Vector &a, const Vector &b)
@@ -182,14 +176,26 @@ Scalar sven::operator* (const Vector &a, const Vector &b)
   return ab;
 }
 
-double sven::dot(size_t n, double *a, double *b)
+double sven::dot(size_t n, 
+    double *a, size_t a_stride, 
+    double *b, size_t b_stride)
 {
-  double dot{0};
+  double d{0};
   for(size_t i=0; i<n; ++i)
   {
-    dot += a[i] * b[i];
+    d += a[i*a_stride] * b[i*b_stride];
   }
-  return dot;
+  return d;
+}
+
+double sven::dot(size_t n, double *a, double *b)
+{
+  double d{0};
+  for(size_t i=0; i<n; ++i)
+  {
+    d += a[i] * b[i];
+  }
+  return d;
 }
 
 void sven::op_dot_impl(const Vector a, const Vector b, Scalar ab)
@@ -344,6 +350,19 @@ Matrix::Matrix(size_t m, size_t n)
   _cnd->notify_all();
 }
 
+Matrix::Matrix(size_t m, size_t n, vector<double> values)
+  : Matrix(m, n)
+{
+  if(values.size() != m*n)
+  {
+    throw runtime_error("non-conformal operation:" + CRIME_SCENE); 
+  }
+
+  for(size_t i=0; i<m*n; ++i) { _[i] = values[i]; }
+  *_state = ObjectState::SolidState;
+  _cnd->notify_all();
+}
+
 Matrix Matrix::Zero(size_t m, size_t n)
 {
   Matrix A{m,n};
@@ -366,12 +385,42 @@ Matrix Matrix::Identity(size_t m, size_t n)
   return A;
 }
 
+bool Matrix::operator== (const Matrix &A)
+{
+  unique_lock<mutex> lk_me{*_mtx}, lk_A{*A._mtx};
+  if(*_state != ObjectState::SolidState)
+  {
+    lk_A.unlock();
+    _cnd->wait(lk_me);
+    lk_A.lock();
+  }
+  if(*A._state != ObjectState::SolidState)
+  {
+    lk_me.unlock();
+    A._cnd->wait(lk_A);
+    lk_me.lock();
+  }
+
+  if(A._m != _m || A._n != _n){ return false; }
+
+  bool result{true};
+  for(size_t i=0; i<_n*_m; ++i)
+  {
+    if(A._[i] != _[i]){ result = false; break; }
+  }
+
+  lk_me.unlock();
+  lk_A.unlock();
+  return result;
+}
+
 size_t Matrix::m() const { return _m; }
 size_t Matrix::n() const { return _n; }
 
 Vector sven::operator* (const Matrix &A, const Vector &x)
 {
-  if(A.n() != x.n()){ 
+  if(A.n() != x.n())
+  { 
     throw runtime_error("non-conformal operation:" + CRIME_SCENE); 
   }
 
@@ -381,11 +430,23 @@ Vector sven::operator* (const Matrix &A, const Vector &x)
   return Ax;
 }
 
-void sven::multi_dot(size_t n, double *a, double *b, double *ab, 
+void sven::multi_dot(size_t n, 
+    double *a, size_t a_stride,
+    double *b, size_t b_stride,
+    double *ab, 
     CountdownLatch &cl)
 {
-  *ab = dot(n, a, b);
+  *ab = dot(n, a, a_stride, b, b_stride);
   --cl;
+}
+
+void sven::multi_dot(size_t n, 
+    double *a,
+    double *b,
+    double *ab, 
+    CountdownLatch &cl)
+{
+  multi_dot(n, a, 1, b, 1, ab, cl);
 }
 
 void sven::op_mul_impl(const Matrix A, const Vector x, Vector Ax)
@@ -394,7 +455,6 @@ void sven::op_mul_impl(const Matrix A, const Vector x, Vector Ax)
   CountdownLatch cl{static_cast<int>(A.n())};
   for(size_t i=0; i<A.n(); ++i)
   {
-    //Ax._[i] = dot(A.n(), &A._[i*A.n()], x._);
     internal::Thunk t = [A, x, Ax, &cl, i]()
     { 
       multi_dot(A.n(), &A._[i*A.n()], x._, &Ax._[i], cl); 
@@ -422,5 +482,25 @@ Matrix sven::operator* (const Matrix &A, const Matrix &B)
 
 void sven::op_mul_impl(const Matrix A, const Matrix B, Matrix AB)
 {
-  //TODO: You are here!
+  lock_guard<mutex> lk_A{*A._mtx}, lk_B{*B._mtx}, lk_AB{*AB._mtx};
+  CountdownLatch cl{static_cast<int>(A._m*B._n)};
+  for(size_t i=0; i<A._m; ++i)
+  {
+    for(size_t j=0; j<B._n; ++j)
+    {
+      internal::Thunk t = [A, B, AB, &cl, i, j]()
+      {
+        multi_dot(A._n, 
+            &A._[i*A._n], 1, 
+            &B._[j], B._n, 
+            &AB._[i*A._n + j], cl);
+      };
+
+      internal::RT::Q().push(t);
+    }
+  }
+  cl.wait();
+  *AB._state = ObjectState::SolidState;
+  AB._cnd->notify_all();
 }
+

@@ -133,7 +133,7 @@ TEST(Scalar, Div)
 
 //Matrix Tests ----------------------------------------------------------------
 
-TEST(Matrix, MulVec)
+TEST(Matrix, MulVecBasic)
 {
   Matrix A = Matrix::Identity(5,5);
   Vector x{1,2,3,4,5};
@@ -143,9 +143,64 @@ TEST(Matrix, MulVec)
   EXPECT_TRUE(Ax == x);
 }
 
+TEST(Matrix, MulVec)
+{
+  Matrix A = Matrix(5,5,
+      {98,3,40,4,5,
+       2,52,15,6,45,
+       87,63,5,89,83,
+       32,79,82,98,74,
+       9,28,73,4,7});
+
+  Vector x{3, 6, 90, 23, 64};
+
+  Vector Ax = A * x;
+
+  Vector _Ax_{4324,  4686,  8448, 14940,  7305};
+
+  EXPECT_TRUE(_Ax_ == Ax);
+}
+
+TEST(Matrix, MulId)
+{
+  Matrix A = Matrix::Identity(5,5);
+  
+  Matrix B = Matrix(5,5,
+      {98,3,40,4,5,
+       2,52,15,6,45,
+       87,63,5,89,83,
+       32,79,82,98,74,
+       9,28,73,4,7});
+
+  Matrix AB = A * B;
+
+  EXPECT_TRUE(AB == B);
+}
+
 TEST(Matrix, Mul)
 {
-  Matrix A = Matrix::Identity(4,7);
+  Matrix A = Matrix(5,5,
+      {98,3,40,4,5,
+       2,52,15,6,45,
+       87,63,5,89,83,
+       32,79,82,98,74,
+       9,28,73,4,7});
+  
+  Matrix B = Matrix(5,5,
+      {98,3,40,4,5,
+       2,52,15,6,45,
+       87,63,5,89,83,
+       32,79,82,98,74,
+       9,28,73,4,7});
 
-  //TODO: You are also here
+  Matrix AB = A * B;
+
+  Matrix _AB_(5,5,
+    {13263,  3426,  4858,  4382,  4276,
+     2202,  5389,  4712,  2423,  4354,
+     12682, 13207, 17807, 10225, 10852,
+     14230, 19184, 16313, 17800, 18291,
+     7480,  6594,  1984,  7121,  7709});
+
+  EXPECT_TRUE(AB == _AB_);
 }
