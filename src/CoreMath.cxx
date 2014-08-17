@@ -20,6 +20,8 @@ using std::runtime_error;
 using std::string;
 using std::to_string;
 using std::vector;
+using std::setprecision;
+using std::fixed;
 
 //~= Vector ~=-----------------------------------------------------------------
 Vector::Vector(size_t n) 
@@ -36,6 +38,14 @@ Vector::Vector(initializer_list<double> xs)
 {
   size_t i{0};
   for(auto d : xs){ _[i++] = d; }
+  *_state = ObjectState::SolidState;
+  _cnd->notify_all();
+}
+
+Vector::Vector(const Column &c)
+  : Vector(c._origin->m())
+{
+  for(size_t i=0; i<_n; ++i) { _[i] = c._origin->_[c._origin->_n*i + c._index]; }
   *_state = ObjectState::SolidState;
   _cnd->notify_all();
 }
@@ -106,12 +116,6 @@ bool Vector::operator== (const Vector &x)
   return result;
 }
 
-Vector & Vector::operator/= (const Scalar &x)
-{
-  *this = *this / x;
-  return *this;
-}
-
 Vector & Vector::operator+= (const Vector &x)
 {
   *this = *this + x;
@@ -127,6 +131,12 @@ Vector & Vector::operator-= (const Vector &x)
 Vector & Vector::operator*= (const Scalar &x)
 {
   *this = *this * x;
+  return *this;
+}
+
+Vector & Vector::operator/= (const Scalar &x)
+{
+  *this = *this / x;
   return *this;
 }
 
@@ -499,6 +509,22 @@ bool Matrix::operator== (const Matrix &A)
   return result;
 }
 
+std::ostream & sven::operator<< (std::ostream &o, Matrix &A)
+{
+  OperandStasis<Matrix> os{A};
+
+  o << setprecision(3) << fixed;
+  for(size_t i=0; i<A._m; ++i)
+  {
+    for(size_t j=0; j<A._n; ++j)
+    {
+      o << A._[i*A._n + j] << " ";
+    }
+    o << "\n";
+  }
+  return o;
+}
+
 Matrix & Matrix::operator*= (const Matrix &A)
 {
   *this = *this * A;
@@ -537,7 +563,7 @@ Vector sven::operator* (const Matrix &A, const Vector &x)
     throw runtime_error("non-conformal operation:" + CRIME_SCENE); 
   }
 
-  Vector Ax(x.n());
+  Vector Ax(A.m());
   internal::Thunk t = [A,x,Ax](){ op_mul_impl(A,x,Ax); };
   internal::RT::Q().push(t);
   return Ax;
@@ -564,6 +590,8 @@ void sven::multi_dot(size_t n,
 
 void sven::op_mul_impl(const Matrix A, const Vector x, Vector Ax)
 {
+  //TODO: This nested thunking is not necessary since this function
+  //is already wrapped within a thunk to begin with
   internal::Thunk th = [A,x,Ax]()
   {
     OperandStasis<Matrix,Vector> os{A,x};
@@ -636,6 +664,11 @@ Column Matrix::C(size_t index)
   return Column(this, index);
 }
 
+ColumnRange Matrix::C(size_t begin, size_t end)
+{
+  return ColumnRange(this, begin, end);
+}
+
 //~=~ Column ~=~---------------------------------------------------------------
 
 Column::Column(Matrix *origin, size_t index)
@@ -646,7 +679,7 @@ Column & Column::operator= (const Vector &x)
 {
 
   unique_lock<mutex> lk{*x._mtx};
-  if(_origin->_m != x._n)
+  if(_origin->_m < x._n)
   { 
     lk.unlock();
     throw runtime_error("non-conformal operation:" + CRIME_SCENE); 
@@ -675,6 +708,89 @@ bool Column::operator== (const Vector &x)
   }
   lk.unlock();
   return result;
+}
+
+//~=~ Column Range ~=~---------------------------------------------------------
+
+ColumnRange::ColumnRange(Matrix *origin, size_t begin, size_t end)
+  : _origin{origin}, _begin{begin}, _end{end}
+{}
+
+size_t ColumnRange::m() const { return _origin->m(); }
+size_t ColumnRange::n() const { return _end - _begin +1; }
+
+Vector sven::operator* (const ColumnRange &C, const Vector &x)
+{
+  if(C.transposed)
+  {
+    if(C.m() != x.n())
+    {
+      throw runtime_error("non-conformal operation:" + CRIME_SCENE);
+    }
+    Vector Cx(C.n());
+    internal::Thunk t = [C,x,Cx](){ op_mul_impl_T(C,x,Cx); };
+    internal::RT::Q().push(t);
+    return Cx;
+  }
+  else
+  {
+    if(C.n() != x.n())
+    {
+      throw runtime_error("non-conformal operation:" + CRIME_SCENE);
+    }
+    Vector Cx(C.m());
+    internal::Thunk t = [C,x,Cx](){ op_mul_impl(C,x,Cx); };
+    internal::RT::Q().push(t);
+    return Cx;
+  }
+
+}
+
+Vector sven::operator* (const ColumnRange &C, const Column &x)
+{
+  Vector cx = x;
+  return C * cx;
+}
+
+void sven::op_mul_impl(const ColumnRange C, const Vector x, Vector Cx)
+{
+  OperandStasis<Matrix,Vector> os{*C._origin, x};
+  lock_guard<mutex> lk{*Cx._mtx};
+  CountdownLatch cl{static_cast<int>(C.n())};
+
+  for(size_t i=0; i<C.n(); ++i)
+  {
+    internal::Thunk t = [C,x,Cx,&cl,i]()
+    {
+      multi_dot(C.n(), &C._origin->_[i*C.n()+C._begin], x._, &Cx._[i], cl);    
+    };
+    internal::RT::Q().push(t);
+  }
+  cl.wait();
+  *Cx._state = ObjectState::SolidState;
+  Cx._cnd->notify_all();
+}
+
+void sven::op_mul_impl_T(const ColumnRange C, const Vector x, Vector Cx)
+{
+  OperandStasis<Matrix,Vector> os{*C._origin, x};
+  lock_guard<mutex> lk{*Cx._mtx};
+  CountdownLatch cl{static_cast<int>(C.n())};
+
+  for(size_t i=0; i<C.n(); ++i)
+  {
+    internal::Thunk t = [C,x,Cx,&cl,i]()
+    {
+      multi_dot(C.n(), 
+          &C._origin->_[i*C.n()+C._begin], C.n(),
+          x._, 1,
+          &Cx._[i], cl);    
+    };
+    internal::RT::Q().push(t);
+  }
+  cl.wait();
+  *Cx._state = ObjectState::SolidState;
+  Cx._cnd->notify_all();
 }
 
 //~=~ SparseMatrix ~=~---------------------------------------------------------
@@ -799,10 +915,16 @@ Vector sven::operator* (const SparseMatrix &A, const Vector &x)
     throw runtime_error("non-conformal operation:" + CRIME_SCENE); 
   }
 
-  Vector Ax(x.n());
+  Vector Ax(A.m());
   internal::Thunk t = [A,x,Ax](){ op_mul_impl(A,x,Ax); };
   internal::RT::Q().push(t);
   return Ax;
+}
+
+Vector sven::operator* (const SparseMatrix &A, const Column &x)
+{
+  Vector cx = x;
+  return A * cx;
 }
 
 void sven::multi_sparse_dot(size_t rz,

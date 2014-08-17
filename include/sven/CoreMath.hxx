@@ -21,6 +21,7 @@
 #include <stdexcept>
 #include <string>
 #include <iostream>
+#include <iomanip>
 #include <cmath>
 
 namespace sven
@@ -30,6 +31,8 @@ class Vector;
 class Scalar;
 class Matrix;
 class SparseMatrix;
+class Column;
+class ColumnRange;
 
 class Vector
 {
@@ -37,6 +40,7 @@ class Vector
 
     explicit Vector(size_t n);
     explicit Vector(std::initializer_list<double>);
+    Vector(const Column &c);
     static Vector Zero(size_t n);
 
     size_t n() const;
@@ -67,6 +71,9 @@ class Vector
     friend void op_mul_impl(const Matrix A, const Vector x, Vector mx);
     
     friend void op_mul_impl(const SparseMatrix A, const Vector x, Vector Ax);
+    
+    friend void op_mul_impl(const ColumnRange C, const Vector x, Vector Cx);
+    friend void op_mul_impl_T(const ColumnRange C, const Vector x, Vector Cx);
 
     friend Scalar norm(const Vector x);
 
@@ -177,6 +184,7 @@ class Column
     size_t _index;
 
     friend class Matrix;
+    friend class Vector;
 };
 
 class Matrix
@@ -192,6 +200,7 @@ class Matrix
 
     double & operator()(size_t i, size_t j);
     Column C(size_t index);
+    ColumnRange C(size_t begin, size_t end);
 
     size_t m() const, n() const;
     ObjectState state() const;
@@ -206,17 +215,48 @@ class Matrix
     friend void op_mul_impl(const Matrix A, const Vector x, Vector Ax);
     friend void op_mul_impl(const Matrix A, const Matrix B, Matrix AB);
 
+    friend void op_mul_impl(const ColumnRange C, const Vector x, Vector Cx);
+    friend void op_mul_impl_T(const ColumnRange C, const Vector x, Vector Cx);
+
+    friend class Vector;
     friend class Column;
     friend class OperandStasis<Matrix>;
     friend class OperandStasis<Matrix,Vector>;
     friend class OperandStasis<Vector,Matrix>;
+
+    friend std::ostream & operator<< (std::ostream &, Matrix &x);
 };
+
+std::ostream & operator<< (std::ostream &, Matrix &x);
 
 Vector operator* (const Matrix &A, const Vector &x);
 void op_mul_impl(const Matrix A, const Vector x, Vector Ax);
 
 Matrix operator* (const Matrix &A, const Matrix &B);
 void op_mul_impl(const Matrix A, const Matrix B, Matrix AB);
+
+class ColumnRange
+{
+  public:
+    ColumnRange() = delete;
+    ColumnRange(Matrix *origin, size_t begin, size_t end);
+
+    size_t m() const, n() const;
+
+    bool transposed{false};
+
+  private:
+    Matrix *_origin;
+    size_t _begin, _end;
+
+    friend void op_mul_impl(const ColumnRange C, const Vector x, Vector Cx);
+    friend void op_mul_impl_T(const ColumnRange C, const Vector x, Vector Cx);
+};
+
+Vector operator* (const ColumnRange &C, const Vector &x);
+Vector operator* (const ColumnRange &C, const Column &x);
+void op_mul_impl(const ColumnRange C, const Vector x, Vector Cx);
+void op_mul_impl_T(const ColumnRange C, const Vector x, Vector Cx);
 
 class SparseMatrix
 {
@@ -258,6 +298,8 @@ void multi_sparse_dot(size_t z,
 
 Vector operator* (const SparseMatrix &A, const Vector &x);
 void op_mul_impl(const SparseMatrix A, const Vector x, Vector Ax);
+
+Vector operator* (const SparseMatrix &A, const Column &x);
 
 }
 #endif

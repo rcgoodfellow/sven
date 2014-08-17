@@ -274,6 +274,10 @@ TEST(Matrix, ColRef)
   A.C(2) = Vector{2,2,2,2,2};
 
   EXPECT_TRUE(c2 == x2);
+
+  Vector x3 = A.C(2);
+
+  EXPECT_TRUE(x3 == x2);
 }
 
 //Sparse Matrix Tests ---------------------------------------------------------

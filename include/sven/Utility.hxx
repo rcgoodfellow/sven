@@ -96,6 +96,11 @@ class OperandStasis
   
 };
 
+template<class E> 
+E& T(E &e){ e.transposed = true; return e; }
+
+template<class E> 
+E T(E e){ e.transposed = true; return e; }
 
 }
 
