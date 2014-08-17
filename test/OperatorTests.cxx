@@ -47,6 +47,11 @@ TEST(Vector, Add)
   EXPECT_DOUBLE_EQ(9, z(2));
   EXPECT_EQ(ObjectState::SolidState, z.state());
 
+  Vector a = x;
+  a += y;
+
+  EXPECT_TRUE(a == z);
+
 }
 
 TEST(Vector, Sub)
@@ -56,6 +61,11 @@ TEST(Vector, Sub)
   Vector z = x - y;
 
   EXPECT_TRUE(z == y);
+
+  Vector a = x;
+  a -= y;
+
+  EXPECT_TRUE(a == z);
 }
 
 TEST(Vector, DivScale)
@@ -70,6 +80,11 @@ TEST(Vector, DivScale)
   EXPECT_DOUBLE_EQ(3, y(2));
   EXPECT_DOUBLE_EQ(4, y(3));
   EXPECT_DOUBLE_EQ(5, y(4));
+  
+  Vector z = x;
+  z /= s;
+
+  EXPECT_TRUE(z == y);
 }
 
 TEST(Vector, MulScale)
@@ -82,6 +97,10 @@ TEST(Vector, MulScale)
   Vector xx{4,8,12,16,20};
 
   EXPECT_TRUE(y == xx);
+
+  Vector z = x;
+  z *= s;
+  EXPECT_TRUE(z == y);
 }
 
 TEST(Vector, Dot)
@@ -91,6 +110,7 @@ TEST(Vector, Dot)
   Scalar z = x * y;
 
   EXPECT_EQ(1*0+2*3+4*5+6*7+8*9, z()); 
+  
 }
 
 TEST(Vector, Norm)
@@ -112,6 +132,11 @@ TEST(Scalar, Add)
   Scalar c = a + b;
 
   EXPECT_DOUBLE_EQ(4, c());
+
+  Scalar d = a;
+  d += b;
+
+  EXPECT_TRUE(c == d);
 }
 
 TEST(Scalar, Sub)
@@ -121,6 +146,11 @@ TEST(Scalar, Sub)
   Scalar c = a - b;
 
   EXPECT_DOUBLE_EQ(2, c());
+
+  Scalar d = a;
+  d -= b;
+
+  EXPECT_TRUE(c == d);
 }
 
 TEST(Scalar, Mul)
@@ -130,6 +160,11 @@ TEST(Scalar, Mul)
   Scalar c = a * b;
 
   EXPECT_DOUBLE_EQ(8, c());
+  
+  Scalar d = a;
+  d *= b;
+
+  EXPECT_TRUE(c == d);
 }
 
 TEST(Scalar, Div)
@@ -139,6 +174,11 @@ TEST(Scalar, Div)
   Scalar c = a / b;
 
   EXPECT_DOUBLE_EQ(2.5, c());
+  
+  Scalar d = a;
+  d /= b;
+
+  EXPECT_TRUE(c == d);
 }
 
 //Matrix Tests ----------------------------------------------------------------
@@ -215,6 +255,11 @@ TEST(Matrix, Mul)
   EXPECT_TRUE(AB == _AB_);
 
   EXPECT_DOUBLE_EQ(16313, _AB_(3, 2));
+
+  Matrix Z = A;
+  Z *= B;
+
+  EXPECT_TRUE(Z == AB);
 }
 
 TEST(Matrix, ColRef)

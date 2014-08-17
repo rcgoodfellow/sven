@@ -27,6 +27,6 @@ size_t Arnoldi::n() const { return _n; }
 void Arnoldi::operator()()
 {
   r0 = b - A*x0;
-  r0 = r0 / norm(r0);
+  r0 /= norm(r0);
 }
 

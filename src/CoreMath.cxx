@@ -106,9 +106,57 @@ bool Vector::operator== (const Vector &x)
   return result;
 }
 
+Vector & Vector::operator/= (const Scalar &x)
+{
+  *this = *this / x;
+  return *this;
+}
+
+Vector & Vector::operator+= (const Vector &x)
+{
+  *this = *this + x;
+  return *this;
+}
+
+Vector & Vector::operator-= (const Vector &x)
+{
+  *this = *this - x;
+  return *this;
+}
+
+Vector & Vector::operator*= (const Scalar &x)
+{
+  *this = *this * x;
+  return *this;
+}
+
 Scalar sven::norm(const Vector x)
 {
   return sqrt(x * x);  
+}
+
+Scalar & Scalar::operator+= (const Scalar &x)
+{
+  *this = *this + x;
+  return *this;
+}
+
+Scalar & Scalar::operator-= (const Scalar &x)
+{
+  *this = *this - x;
+  return *this;
+}
+
+Scalar & Scalar::operator*= (const Scalar &x)
+{
+  *this = *this * x;
+  return *this;
+}
+
+Scalar & Scalar::operator/= (const Scalar &x)
+{
+  *this = *this / x;
+  return *this;
 }
     
 std::ostream & sven::operator<< (std::ostream &o, Vector &x)
@@ -449,6 +497,12 @@ bool Matrix::operator== (const Matrix &A)
   lk_me.unlock();
   lk_A.unlock();
   return result;
+}
+
+Matrix & Matrix::operator*= (const Matrix &A)
+{
+  *this = *this * A;
+  return *this;
 }
 
 double & Matrix::operator()(size_t i, size_t j)

@@ -43,6 +43,12 @@ class Vector
     double & operator()(size_t i);
     ObjectState state() const;
     bool operator==(const Vector &x);
+   
+    Vector & operator+=(const Vector &x);
+    Vector & operator-=(const Vector &x);
+    Vector & operator*=(const Scalar &x);
+    Vector & operator/=(const Scalar &x);
+
 
   private:
     size_t _n;
@@ -50,6 +56,7 @@ class Vector
     std::shared_ptr<ObjectState> _state;
     std::shared_ptr<std::mutex> _mtx;
     std::shared_ptr<std::condition_variable> _cnd;
+
 
     friend void op_plus_impl(const Vector a, const Vector b, Vector ab);
     friend void op_sub_impl(const Vector a, const Vector b, Vector ab);
@@ -115,6 +122,11 @@ class Scalar
     bool operator==(const Scalar &s);
     ObjectState state() const;
 
+    Scalar & operator+= (const Scalar&);
+    Scalar & operator-= (const Scalar&);
+    Scalar & operator*= (const Scalar&);
+    Scalar & operator/= (const Scalar&);
+
   private:
     double *_;
     ObjectState *_state{new ObjectState};
@@ -175,6 +187,8 @@ class Matrix
     static Matrix Zero(size_t m, size_t n);
     static Matrix Identity(size_t m, size_t n);
     bool operator==(const Matrix &A);
+    
+    Matrix & operator*= (const Matrix &);
 
     double & operator()(size_t i, size_t j);
     Column C(size_t index);
