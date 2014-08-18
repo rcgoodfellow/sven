@@ -42,28 +42,22 @@ Vector::Vector(initializer_list<double> xs)
 
 Vector::Vector(const Vector &x)
   : Object(x), _n{x.n()}
-{
-  //tick();
-  //tock();
-}
+{ }
 
 Vector::Vector(const Column &c)
   : Vector(c.origin->m())
 {
-  for(size_t i=0; i<_n; ++i) 
-  { 
-    this->operator()(i) = (*c.origin)(c.origin->n()*i, c.index); 
-  }
+  lock_guard<mutex> lkc{*c.origin->wait().mutex(), std::adopt_lock};
+
+  for(size_t i=0; i<_n; ++i) { this->operator()(i) = (*c.origin)(i, c.index); }
+
   tock();
 }
 
 Vector Vector::Zero(size_t n, bool ready)
 {
   Vector x(n);
-  for(size_t i=0; i<n; ++i)
-  {
-    x._data[i] = 0;
-  }
+  for(size_t i=0; i<n; ++i) { x._data[i] = 0; }
   if(ready) { x.tock(); }
   return x;
 }
@@ -72,48 +66,13 @@ size_t Vector::n() const { return _n; }
 
 double & Vector::operator()(size_t i) const
 { 
-  //lock_guard<mutex> lg{*wait().mutex(), adopt_lock};
   return _data[i];
-  /*
-  switch(*_state)
-  {
-    case ObjectState::Materializing: 
-      _cnd->wait(lk);
-      lk.unlock();
-      return _[i];
-
-    case ObjectState::SolidState:    
-      lk.unlock(); 
-      return _[i];
-
-    case ObjectState::Vapor:         
-    default:                         
-      lk.unlock();
-      throw runtime_error("attempt to access vaporized object" + CRIME_SCENE);
-  }
-  */
 }
-
-//ObjectState Vector::state() const { return *_state; }
 
 bool Vector::operator== (const Vector &x)
 {
-  /*
-  unique_lock<mutex> lk_me{*_mtx}, lk_x{*x._mtx};
-  if(*_state != ObjectState::SolidState) 
-  { 
-    lk_x.unlock();
-    _cnd->wait(lk_me); 
-    lk_x.lock();
-  }
-  if(*x._state != ObjectState::SolidState) 
-  { 
-    lk_me.unlock();
-    x._cnd->wait(lk_x); 
-    lk_me.lock();
-  }
-  */
-  std::lock_guard<mutex> lk{*wait().mutex(), adopt_lock};
+  WAIT_GUARD_THIS();
+  WAIT_GUARD(x);
 
   if(x._n != _n){ return false; }
 
@@ -123,39 +82,38 @@ bool Vector::operator== (const Vector &x)
     if(x._data[i] != _data[i]) { result = false; break; }  
   }
 
-  //lk_me.unlock();
-  //lk_x.unlock();
   return result;
 }
 
 Vector & Vector::operator+= (const Vector &x)
 {
   tick();
-
   internal::Thunk t = [this,x]{ op_plus_eq_impl(*this, x); };
   internal::RT::Q().push(t);
-  
   return *this;
 }
 
 Vector & Vector::operator-= (const Vector &x)
 {
   tick();
-  *this = *this - x;
+  internal::Thunk t = [this,x]{ op_sub_eq_impl(*this, x); };
+  internal::RT::Q().push(t);
   return *this;
 }
 
 Vector & Vector::operator*= (const Scalar &x)
 {
   tick();
-  *this = *this * x;
+  internal::Thunk t = [this,x]{ op_mul_eq_impl(*this, x); };
+  internal::RT::Q().push(t);
   return *this;
 }
 
 Vector & Vector::operator/= (const Scalar &x)
 {
   tick();
-  *this = *this / x;
+  internal::Thunk t = [this,x]{ op_div_eq_impl(*this, x); };
+  internal::RT::Q().push(t);
   return *this;
 }
 
@@ -167,28 +125,32 @@ Scalar sven::norm(const Vector x)
 Scalar & Scalar::operator+= (const Scalar &x)
 {
   tick();
-  *this = *this + x;
+  internal::Thunk t = [this,x]{ op_plus_eq_impl(*this, x); };
+  internal::RT::Q().push(t);
   return *this;
 }
 
 Scalar & Scalar::operator-= (const Scalar &x)
 {
   tick();
-  *this = *this - x;
+  internal::Thunk t = [this,x]{ op_sub_eq_impl(*this, x); };
+  internal::RT::Q().push(t);
   return *this;
 }
 
 Scalar & Scalar::operator*= (const Scalar &x)
 {
   tick();
-  *this = *this * x;
+  internal::Thunk t = [this,x]{ op_mul_eq_impl(*this, x); };
+  internal::RT::Q().push(t);
   return *this;
 }
 
 Scalar & Scalar::operator/= (const Scalar &x)
 {
   tick();
-  *this = *this / x;
+  internal::Thunk t = [this,x]{ op_div_eq_impl(*this, x); };
+  internal::RT::Q().push(t);
   return *this;
 }
     
@@ -202,7 +164,6 @@ std::ostream & sven::operator<< (std::ostream &o, Vector &x)
     o << x(i) << " ";
   }
   
-  //lk.unlock();
   return o;
 }
 
@@ -260,6 +221,15 @@ void sven::op_sub_impl(const Vector a, const Vector b, Vector ab)
   ab.tock();
 }
 
+void sven::op_sub_eq_impl(Vector a, const Vector b)
+{
+  MOD_GUARD(a);
+  WAIT_GUARD(b);
+  
+  for(size_t i=0; i<a.n(); ++i){ a(i) -= b(i); }
+
+  a.tock();
+}
 
 Scalar sven::operator* (const Vector &a, const Vector &b)
 {
@@ -278,20 +248,14 @@ double sven::dot(size_t n,
     double *b, size_t b_stride)
 {
   double d{0};
-  for(size_t i=0; i<n; ++i)
-  {
-    d += a[i*a_stride] * b[i*b_stride];
-  }
+  for(size_t i=0; i<n; ++i) { d += a[i*a_stride] * b[i*b_stride]; }
   return d;
 }
 
 double sven::dot(size_t n, double *a, double *b)
 {
   double d{0};
-  for(size_t i=0; i<n; ++i)
-  {
-    d += a[i] * b[i];
-  }
+  for(size_t i=0; i<n; ++i) { d += a[i] * b[i]; }
   return d;
 }
 
@@ -299,7 +263,7 @@ void sven::op_dot_impl(const Vector a, const Vector b, Scalar ab)
 {
   BINOP_GUARD(a, b, ab);
 
-  ab() = dot(a.n(), &a(0), &a(0));
+  ab() = dot(a.n(), &a(0), &b(0));
 
   ab.tock();
 }
@@ -321,6 +285,16 @@ void sven::op_div_impl(const Vector a, const Scalar b, Vector ab)
   ab.tock();
 }
 
+void sven::op_div_eq_impl(Vector a, const Scalar b)
+{
+  MOD_GUARD(a);
+  WAIT_GUARD(b);
+  
+  for(size_t i=0; i<a.n(); ++i) { a(i) /= b(); }
+
+  a.tock();
+}
+
 Vector sven::operator* (const Vector &a, const Scalar &b)
 {
   Vector ab(a.n());
@@ -336,6 +310,16 @@ void sven::op_mul_impl(const Vector a, const Scalar b, Vector ab)
   for(size_t i=0; i<a.n(); ++i) { ab(i) = a(i) * b(); }
 
   ab.tock();
+}
+
+void sven::op_mul_eq_impl(Vector a, const Scalar b)
+{
+  MOD_GUARD(a);
+  WAIT_GUARD(b);
+  
+  for(size_t i=0; i<a.n(); ++i) { a(i) *= b(); }
+
+  a.tock();
 }
 
 //~= Scalar ~=-----------------------------------------------------------------
@@ -360,25 +344,6 @@ Scalar sven::sqrt(const Scalar x)
 double & Scalar::operator()() const
 { 
   return *_data;
-  /*
-  unique_lock<mutex> lk{*_mtx};
-  switch(*_state)
-  {
-    case ObjectState::Materializing:
-      _cnd->wait(lk);
-      lk.unlock();
-      return *_;
-      
-    case ObjectState::SolidState:
-      lk.unlock();
-      return *_;
-
-    case ObjectState::Vapor:
-    default:
-      lk.unlock();
-      throw runtime_error("attempt to access vaporized object" + CRIME_SCENE);
-  }
-  */
 }
 
 bool Scalar::operator==(const Scalar &s)
@@ -388,8 +353,6 @@ bool Scalar::operator==(const Scalar &s)
 
   return this->operator()() == s();
 }
-
-//ObjectState Scalar::state() const { return *_state; }
 
 Scalar sven::operator+ (const Scalar &a, const Scalar &b)
 {
@@ -406,6 +369,15 @@ void sven::op_plus_impl(const Scalar a, const Scalar b, Scalar ab)
   ab() = a() + b();
 
   ab.tock();
+}
+void sven::op_plus_eq_impl(Scalar a, const Scalar b)
+{
+  MOD_GUARD(a);
+  WAIT_GUARD(b);
+
+  a() += b();
+
+  a.tock();
 }
 
 Scalar sven::operator- (const Scalar &a, const Scalar &b)
@@ -425,6 +397,15 @@ void sven::op_sub_impl(const Scalar a, const Scalar b, Scalar ab)
 
   ab.tock();
 }
+void sven::op_sub_eq_impl(Scalar a, const Scalar b)
+{
+  MOD_GUARD(a);
+  WAIT_GUARD(b);
+
+  a() -= b();
+
+  a.tock();
+}
 
 Scalar sven::operator* (const Scalar &a, const Scalar &b)
 {
@@ -442,6 +423,15 @@ void sven::op_mul_impl(const Scalar a, const Scalar b, Scalar ab)
 
   ab.tock();
 }
+void sven::op_mul_eq_impl(Scalar a, const Scalar b)
+{
+  MOD_GUARD(a);
+  WAIT_GUARD(b);
+
+  a() *= b();
+
+  a.tock();
+}
 
 Scalar sven::operator/ (const Scalar &a, const Scalar &b)
 {
@@ -458,6 +448,15 @@ void sven::op_div_impl(const Scalar a, const Scalar b, Scalar ab)
   ab() = a() / b();
 
   ab.tock();
+}
+void sven::op_div_eq_impl(Scalar a, const Scalar b)
+{
+  MOD_GUARD(a);
+  WAIT_GUARD(b);
+
+  a() /= b();
+
+  a.tock();
 }
 
 //~= Matrix ~=-----------------------------------------------------------------
@@ -496,9 +495,8 @@ Matrix Matrix::Identity(size_t m, size_t n)
 {
   Matrix A = Matrix::Zero(m,n);
 
-  for(size_t i=0; i<max(m,n); ++i){ A(i*n, i) = 1; }
+  for(size_t i=0; i<max(m,n); ++i){ A(i, i) = 1; }
 
-  A.tock();
   return A;
 }
 
@@ -525,15 +523,13 @@ std::ostream & sven::operator<< (std::ostream &o, Matrix &A)
   o << setprecision(3) << fixed;
   for(size_t i=0; i<A.m(); ++i)
   {
-    for(size_t j=0; j<A.n(); ++j)
-    {
-      o << A(i*A.n(), j) << " ";
-    }
+    for(size_t j=0; j<A.n(); ++j) { o << A(i, j) << " "; }
     o << "\n";
   }
   return o;
 }
 
+//TODO: Eternal badness
 Matrix & Matrix::operator*= (const Matrix &A)
 {
   *this = *this * A;
@@ -542,32 +538,11 @@ Matrix & Matrix::operator*= (const Matrix &A)
 
 double & Matrix::operator()(size_t i, size_t j) const
 {
-  /*
-  unique_lock<mutex> lk{*_mtx};
-  switch(*_state)
-  {
-    case ObjectState::Materializing: 
-      _cnd->wait(lk);
-      lk.unlock();
-      return _[i*_n + j];
-
-    case ObjectState::SolidState:    
-      lk.unlock(); 
-      return _[i*_n + j];
-
-    case ObjectState::Vapor:         
-    default:                         
-      lk.unlock();
-      throw runtime_error("attempt to access vaporized object" + CRIME_SCENE);
-  }
-  */
-      
   return _data[i*_n + j];
 }
 
 size_t Matrix::m() const { return _m; }
 size_t Matrix::n() const { return _n; }
-//ObjectState Matrix::state() const { return *_state; }
 
 Vector sven::operator* (const Matrix &A, const Vector &x)
 {
@@ -604,7 +579,7 @@ void sven::multi_dot(size_t n,
 void sven::op_mul_impl(const Matrix A, const Vector x, Vector Ax)
 {
   BINOP_GUARD(A, x, Ax);
-  CountdownLatch cl{static_cast<int>(A.n())};
+  CountdownLatch cl{static_cast<int>(A.m())};
 
   for(size_t i=0; i<A.n(); ++i)
   {
@@ -695,11 +670,7 @@ void sven::op_eq_impl(Column c, Vector x)
   lock_guard<mutex> lkc{*c.origin->mod_wait().mutex(), std::adopt_lock};
 
   size_t n = std::min(c.origin->m(), x.n());
-  for(size_t i=0; i<n; ++i)
-  {
-    //c._origin->_[i*c._origin->_n + c._index] = x._[i]; 
-    (*c.origin)(i, c.index) = x(i);
-  }
+  for(size_t i=0; i<n; ++i) { (*c.origin)(i, c.index) = x(i); }
 
   c.origin->tock();
 }
@@ -714,9 +685,7 @@ Column & Column::operator-= (const Vector &x)
 
   origin->tick();
 
-  internal::Thunk t = 
-    [this,x](){op_minus_eq_impl(*this, x);};
-
+  internal::Thunk t = [this,x](){op_minus_eq_impl(*this, x);};
   internal::RT::Q().push(t);
   
   return *this;
@@ -728,11 +697,7 @@ void sven::op_minus_eq_impl(Column c, Vector x)
   lock_guard<mutex> lkc{*c.origin->mod_wait().mutex(), std::adopt_lock};
   
   size_t n = std::min(c.origin->m(), x.n());
-  for(size_t i=0; i<n; ++i)
-  {
-    //c._origin->_[i*c._origin->_n + c._index] -= x._[i]; 
-    (*c.origin)(i, c.index) -= x(i);
-  }
+  for(size_t i=0; i<n; ++i) { (*c.origin)(i, c.index) -= x(i); }
 
   c.origin->tock();
 }
@@ -757,11 +722,7 @@ void sven::op_plus_eq_impl(Column c, Vector x)
   WAIT_GUARD(x);
   lock_guard<mutex> lkc{*c.origin->mod_wait().mutex(), std::adopt_lock};
 
-  for(size_t i=0; i<c.origin->m(); ++i)
-  {
-    //c._origin->_[i*c._origin->_n + c._index] += x._[i]; 
-    (*c.origin)(i, c.index) += x(i);
-  }
+  for(size_t i=0; i<c.origin->m(); ++i) { (*c.origin)(i, c.index) += x(i); }
 
   c.origin->tock();
 }
@@ -776,7 +737,6 @@ bool Column::operator== (const Vector &x)
   bool result{true};
   for(size_t i=0; i<origin->m(); ++i)
   {
-    //if(_origin->_[i*_origin->_n + _index] != x._[i]){ result = false; break; }
     if((*origin)(i, index) != x(i)){ result = false; break; }
   }
 
@@ -821,7 +781,6 @@ Vector sven::operator* (const ColumnRange &C, const Vector &x)
 
 Vector sven::operator* (const ColumnRange &C, const Column &x)
 {
-  //OperandStasis<Matrix>(*x._origin);
   lock_guard<mutex> lkc{*C.origin->wait().mutex(), adopt_lock};
 
   Vector cx = x;
@@ -839,9 +798,6 @@ void sven::op_mul_impl(const ColumnRange C, const Vector x, Vector Cx)
   {
     internal::Thunk t = [C,x,Cx,&cl,i]()
     {
-      //multi_dot(C.n(), 
-      //    &C._origin->_[i*C._origin->_n+C._begin], x._, &Cx._[i], cl);    
-
       multi_dot(C.n(),
           &(*C.origin)(i, C.begin),
           &x(0),
@@ -866,11 +822,6 @@ void sven::op_mul_impl_T(const ColumnRange C, const Vector x, Vector Cx)
   {
     internal::Thunk t = [C,x,Cx,&cl,i]()
     {
-      //multi_dot(C.m(), 
-      //    &C._origin->_[i+C._begin], C._origin->_n,
-      //    x._, 1,
-      //    &Cx._[i], cl);    
-      
       multi_dot(C.m(), 
           &(*C.origin)(0,i+C.begin), C.origin->n(),
           &x(0), 1,
@@ -981,26 +932,6 @@ double & SparseMatrix::operator() (size_t i, size_t j)
     throw runtime_error("unreal sparse matrix coordinates" + CRIME_SCENE);
   }
   return _at(i, j);
-
-  /*
-  unique_lock<mutex> lk{*_mtx};
-  switch(*_state)
-  {
-    case ObjectState::Materializing: 
-      _cnd->wait(lk);
-      //fallthrough
-
-    case ObjectState::SolidState:    
-      lk.unlock(); 
-      return _at(i, j);
-
-    case ObjectState::Vapor:         
-    default:                         
-      lk.unlock();
-      throw runtime_error("attempt to access vaporized object" + CRIME_SCENE);
-  }
-  */
-  
 }
 
 size_t SparseMatrix::m() const { return _m; }
@@ -1010,7 +941,6 @@ size_t SparseMatrix::z() const { return _z; }
 size_t* SparseMatrix::r() const { return _data.r; }
 size_t* SparseMatrix::c() const { return _data.c; }
 double* SparseMatrix::v() const { return _data.v; }
-//ObjectState SparseMatrix::state() const { return *_state; }
 
 Vector sven::operator* (const SparseMatrix &A, const Vector &x)
 {
@@ -1027,18 +957,6 @@ Vector sven::operator* (const SparseMatrix &A, const Vector &x)
 
 Vector sven::operator* (const SparseMatrix &A, const Column &x)
 {
-  //Vector cx = x;
-  //return A * cx;
- 
-  /*
-  if(A.n() != x.n())
-  { 
-    throw runtime_error("non-conformal operation:" + CRIME_SCENE); 
-  }
-  */
-
-  //auto *ops = new OperandStasis<SparseMatrix, Matrix>(A,*x._origin);
-
   Vector Ax(A.m());
   internal::Thunk t = [A,x,Ax](){ op_mul_impl(A,x,Ax); };
   internal::RT::Q().push(t);
@@ -1052,10 +970,7 @@ void sven::multi_sparse_dot(size_t rz,
     CountdownLatch &cl)
 {
   double d{0};
-  for(size_t i=0; i<rz; ++i)
-  {
-    d += A_v[i] * x[A_c[i]];
-  }
+  for(size_t i=0; i<rz; ++i) { d += A_v[i] * x[A_c[i]]; }
   *Ax = d;
   --cl;
 }

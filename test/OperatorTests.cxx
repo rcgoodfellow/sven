@@ -78,6 +78,7 @@ TEST(Vector, DivScale)
 
   Vector y = x / s;
 
+  y.wait();
   EXPECT_DOUBLE_EQ(1, y(0));
   EXPECT_DOUBLE_EQ(2, y(1));
   EXPECT_DOUBLE_EQ(3, y(2));
@@ -112,6 +113,7 @@ TEST(Vector, Dot)
 
   Scalar z = x * y;
 
+  z.wait();
   EXPECT_EQ(1*0+2*3+4*5+6*7+8*9, z()); 
   
 }
@@ -134,6 +136,7 @@ TEST(Scalar, Add)
 
   Scalar c = a + b;
 
+  c.wait();
   EXPECT_DOUBLE_EQ(4, c());
 
   Scalar d = a;
@@ -148,6 +151,7 @@ TEST(Scalar, Sub)
   
   Scalar c = a - b;
 
+  c.wait();
   EXPECT_DOUBLE_EQ(2, c());
 
   Scalar d = a;
@@ -162,6 +166,7 @@ TEST(Scalar, Mul)
   
   Scalar c = a * b;
 
+  c.wait();
   EXPECT_DOUBLE_EQ(8, c());
   
   Scalar d = a;
@@ -176,6 +181,7 @@ TEST(Scalar, Div)
   
   Scalar c = a / b;
 
+  c.wait();
   EXPECT_DOUBLE_EQ(2.5, c());
   
   Scalar d = a;

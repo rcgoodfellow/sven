@@ -69,17 +69,21 @@ void op_plus_eq_impl(Vector a, const Vector b);
 
 Vector operator- (const Vector &a, const Vector &b);
 void op_sub_impl(const Vector a, const Vector b, Vector ab);
-
-double dot(size_t n, double *a, size_t a_stride, double *b, size_t b_stride);
-double dot(size_t n, double *a, double *b);
-Scalar operator* (const Vector &a, const Vector &b);
-void op_dot_impl(const Vector a, const Vector b, Scalar ab);
+void op_sub_eq_impl(Vector a, const Vector b);
 
 Vector operator/ (const Vector &a, const Scalar &b);
 void op_div_impl(const Vector a, const Scalar b, Vector ab);
+void op_div_eq_impl(Vector a, const Scalar b);
 
 Vector operator* (const Vector &a, const Scalar &b);
 void op_mul_impl(const Vector a, const Scalar b, Vector ab);
+void op_mul_eq_impl(Vector a, const Scalar b);
+
+Scalar operator* (const Vector &a, const Vector &b);
+double dot(size_t n, double *a, size_t a_stride, double *b, size_t b_stride);
+double dot(size_t n, double *a, double *b);
+void op_dot_impl(const Vector a, const Vector b, Scalar ab);
+
 
 void multi_dot(size_t n, 
     double *a, size_t a_stride,
@@ -112,15 +116,19 @@ Scalar sqrt(const Scalar);
 
 Scalar operator+ (const Scalar &a, const Scalar &b);
 void op_plus_impl(const Scalar a, const Scalar b, Scalar ab);
+void op_plus_eq_impl(Scalar a, const Scalar b);
 
 Scalar operator- (const Scalar &a, const Scalar &b);
 void op_sub_impl (const Scalar a, const Scalar b, Scalar ab);
+void op_sub_eq_impl(Scalar a, const Scalar b);
 
 Scalar operator* (const Scalar &a, const Scalar &b);
 void op_mul_impl(const Scalar a, const Scalar b, Scalar ab);
+void op_mul_eq_impl(Scalar a, const Scalar b);
 
 Scalar operator/ (const Scalar &a, const Scalar &b);
 void op_div_impl (const Scalar a, const Scalar b, Scalar ab);
+void op_div_eq_impl(Scalar a, const Scalar b);
 
 class Column
 {

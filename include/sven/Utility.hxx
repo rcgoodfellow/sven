@@ -82,8 +82,6 @@ class Object
     std::unique_lock<std::mutex> wait() const
     {
       std::unique_lock<std::mutex> lk{*_mtx};
-      //std::cout << *_current_version << " : " 
-      //          << _scheduled_version << std::endl;
       if(!up_to_date())
       {
         _cnd->wait(lk, 
@@ -113,24 +111,6 @@ class Object
       *_current_version = 0;
     }
 
-    /*
-    Object() = delete;
-    Object(const Object& obj)
-    {
-      WAIT_GUARD(obj);
-      _data = obj._data;
-      //do not carry over version info
-    }
-
-    Object & operator= (const Object & obj)
-    {
-      WAIT_GUARD(obj);
-      _data = obj._data;
-      //do not carry over version info
-      return *this;
-    }
-    */
-
   protected:
     T _data;
     size_t *_current_version{new size_t};
@@ -155,49 +135,6 @@ class CountdownLatch
     std::atomic<int> _cnt;
     std::shared_ptr<std::mutex> _mtx{new std::mutex};
     std::shared_ptr<std::condition_variable> _cnd{new std::condition_variable};
-};
-
-enum class ObjectState{Materializing, SolidState, Vapor};
-
-template<class A, class B=A>
-class OperandStasis
-{
-  A a;
-  B b;
-
-  std::unique_lock<std::mutex> lk_a, lk_b;
-
-  public:
-    OperandStasis(A a, B b) 
-      : a{a}, b{b}, 
-        lk_a{*a._mtx, std::defer_lock}, lk_b{*b._mtx, std::defer_lock}
-    {
-      lk_a.lock();
-      if(a.state() != ObjectState::SolidState)
-      {
-        a._cnd->wait(lk_a);
-      }
-
-      if(a._mtx != b._mtx)
-      {
-        lk_b.lock();
-        if(b.state() != ObjectState::SolidState)
-        {
-          lk_a.unlock();
-          b._cnd->wait(lk_b);
-          lk_a.lock();
-        }
-      }
-    }
-
-    OperandStasis(A a) : OperandStasis(a,a) {}
-
-    virtual ~OperandStasis()
-    {
-      lk_a.unlock();
-      if(a._mtx != b._mtx) { lk_b.unlock(); };
-    }
-  
 };
 
 template<class E> 
