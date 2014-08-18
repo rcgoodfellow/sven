@@ -40,9 +40,9 @@ class Vector : public Object<double*>
 
     explicit Vector(size_t n);
     explicit Vector(std::initializer_list<double>);
-    Vector(const Vector &x);
     Vector(const Column &c);
     static Vector Zero(size_t n, bool ready=true);
+    Vector operator! ();
 
 
     size_t n() const;
@@ -62,6 +62,8 @@ class Vector : public Object<double*>
 Scalar norm(const Vector x);
     
 std::ostream & operator<< (std::ostream &, Vector &x);
+
+void op_bang_impl(Vector a, const Vector b);
 
 Vector operator+ (const Vector &a, const Vector &b);
 void op_plus_impl(const Vector a, const Vector b, Vector ab);
@@ -162,6 +164,8 @@ class Matrix : public Object<double*>
     static Matrix Zero(size_t m, size_t n);
     static Matrix Identity(size_t m, size_t n);
     bool operator==(const Matrix &A);
+
+    Matrix operator!();
     
     Matrix & operator*= (const Matrix &);
 
@@ -177,11 +181,14 @@ class Matrix : public Object<double*>
 
 std::ostream & operator<< (std::ostream &, Matrix &x);
 
+void op_bang_impl(Matrix A, const Matrix B, bool use_mod_guard = false);
+
 Vector operator* (const Matrix &A, const Vector &x);
 void op_mul_impl(const Matrix A, const Vector x, Vector Ax);
 
 Matrix operator* (const Matrix &A, const Matrix &B);
 void op_mul_impl(const Matrix A, const Matrix B, Matrix AB);
+void op_mul_eq_impl(Matrix A, const Matrix B);
 
 class ColumnRange
 {

@@ -50,7 +50,7 @@ TEST(Vector, Add)
   EXPECT_DOUBLE_EQ(9, z(2));
   //EXPECT_EQ(ObjectState::SolidState, z.state());
 
-  Vector a = x;
+  Vector a = !x;
   a += y;
 
   EXPECT_TRUE(a == z);
@@ -265,7 +265,7 @@ TEST(Matrix, Mul)
 
   EXPECT_DOUBLE_EQ(16313, _AB_(3, 2));
 
-  Matrix Z = A;
+  Matrix Z = !A;
   Z *= B;
 
   EXPECT_TRUE(Z == AB);

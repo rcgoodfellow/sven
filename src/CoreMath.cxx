@@ -40,9 +40,23 @@ Vector::Vector(initializer_list<double> xs)
   tock();
 }
 
-Vector::Vector(const Vector &x)
-  : Object(x), _n{x.n()}
-{ }
+Vector Vector::operator!()
+{
+  Vector copy(n());
+  internal::Thunk t = [this,copy](){ op_bang_impl(copy, *this); };
+  internal::RT::Q().push(t);
+  return copy;
+}
+
+void sven::op_bang_impl(Vector a, const Vector b)
+{
+  MOD_GUARD(a);
+  WAIT_GUARD(b);
+
+  for(size_t i=0; i<a.n(); ++i) { a(i) = b(i); }
+
+  a.tock();
+}
 
 Vector::Vector(const Column &c)
   : Vector(c.origin->m())
@@ -159,10 +173,7 @@ std::ostream & sven::operator<< (std::ostream &o, Vector &x)
   WAIT_GUARD(x);
 
   size_t n = x.n();
-  for(size_t i=0; i<n; ++i)
-  {
-    o << x(i) << " ";
-  }
+  for(size_t i=0; i<n; ++i) { o << x(i) << " "; }
   
   return o;
 }
@@ -529,10 +540,31 @@ std::ostream & sven::operator<< (std::ostream &o, Matrix &A)
   return o;
 }
 
-//TODO: Eternal badness
+Matrix Matrix::operator!()
+{
+  Matrix copy(m(), n());
+  internal::Thunk t = [this,copy](){ op_bang_impl(copy, *this); };
+  internal::RT::Q().push(t);
+  return copy;
+}
+
+void sven::op_bang_impl(Matrix A, const Matrix B, bool use_mod_guard)
+{
+  MOD_GUARD(A);
+  if(use_mod_guard){ MOD_GUARD(B); }
+  else{ WAIT_GUARD(B); }
+
+  double *a = &A(0,0), *b = &B(0,0);
+  for(size_t i=0; i<A.m()*A.n(); ++i) { a[i] = b[i]; }
+
+  A.tock();
+}
+
 Matrix & Matrix::operator*= (const Matrix &A)
 {
-  *this = *this * A;
+  tick();
+  internal::Thunk t = [this, A]{ op_mul_eq_impl(*this, A); };
+  internal::RT::Q().push(t);
   return *this;
 }
 
@@ -631,6 +663,35 @@ void sven::op_mul_impl(const Matrix A, const Matrix B, Matrix AB)
   cl.wait();
 
   AB.tock();
+}
+
+void sven::op_mul_eq_impl(Matrix A, const Matrix B)
+{
+  MOD_GUARD(A);
+  WAIT_GUARD(B);
+  CountdownLatch cl{static_cast<int>(A.m()*B.n())};
+
+  Matrix AC(A.m(), A.n()); 
+  op_bang_impl(AC, A, true);
+
+  for(size_t i=0; i<A.m(); ++i)
+  {
+    for(size_t j=0; j<B.n(); ++j)
+    {
+      internal::Thunk t = [A, B, AC, &cl, i, j]()
+      {
+        multi_dot(A.n(), 
+           &AC(i,0), 1, 
+            &B(0,j), B.n(), 
+            &A(i,j), 
+            cl);
+      };
+      internal::RT::Q().push(t);
+    }
+  }
+  cl.wait();
+
+  A.tock();
 }
 
 Column Matrix::C(size_t index)
