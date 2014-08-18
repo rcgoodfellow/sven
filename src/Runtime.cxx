@@ -30,6 +30,8 @@ void RT::thread_func()
   {
     Thunk t;
     _Q.pop(t);
+    ++active_jobs;
     t();
+    --active_jobs;
   }
 }

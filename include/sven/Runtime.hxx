@@ -38,6 +38,7 @@ class RT
     void thread_func();
 
     Queue _Q{};
+    std::atomic<int> active_jobs{0};
 };
 
 }}

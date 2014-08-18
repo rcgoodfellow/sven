@@ -34,18 +34,20 @@ class SparseMatrix;
 class Column;
 class ColumnRange;
 
-class Vector
+class Vector : public Object<double*>
 {
   public:
 
     explicit Vector(size_t n);
     explicit Vector(std::initializer_list<double>);
+    Vector(const Vector &x);
     Vector(const Column &c);
-    static Vector Zero(size_t n);
+    static Vector Zero(size_t n, bool ready=true);
+
 
     size_t n() const;
-    double & operator()(size_t i);
-    ObjectState state() const;
+    double & operator()(size_t i) const;
+    //ObjectState state() const;
     bool operator==(const Vector &x);
    
     Vector & operator+=(const Vector &x);
@@ -56,12 +58,13 @@ class Vector
 
   private:
     size_t _n;
-    double *_;
-    std::shared_ptr<ObjectState> _state;
-    std::shared_ptr<std::mutex> _mtx;
-    std::shared_ptr<std::condition_variable> _cnd;
+    //double *_;
+    //std::shared_ptr<ObjectState> _state;
+    //std::shared_ptr<std::mutex> _mtx;
+    //std::shared_ptr<std::condition_variable> _cnd;
 
 
+    /*
     friend void op_plus_impl(const Vector a, const Vector b, Vector ab);
     friend void op_sub_impl(const Vector a, const Vector b, Vector ab);
     friend void op_dot_impl(const Vector a, const Vector b, Scalar ab);
@@ -70,10 +73,20 @@ class Vector
     
     friend void op_mul_impl(const Matrix A, const Vector x, Vector mx);
     
-    friend void op_mul_impl(const SparseMatrix A, const Vector x, Vector Ax);
+    friend void op_mul_impl(const SparseMatrix A, const Vector x, Vector Ax,
+        OperandStasis<SparseMatrix,Vector>*);
+
+    friend void op_mul_impl(const SparseMatrix A, const Column cx, Vector Ax,
+    OperandStasis<SparseMatrix, Matrix> *osp);
     
     friend void op_mul_impl(const ColumnRange C, const Vector x, Vector Cx);
     friend void op_mul_impl_T(const ColumnRange C, const Vector x, Vector Cx);
+    
+    friend void op_eq_impl(Column c, Vector x,
+        OperandStasis<Matrix,Vector> *osp);
+    friend void op_minus_eq_impl(Column c, Vector x,
+        OperandStasis<Matrix,Vector> *osp);
+    friend void op_plus_eq_impl(Column c, Vector x);
 
     friend Scalar norm(const Vector x);
 
@@ -87,6 +100,7 @@ class Vector
     friend class OperandStasis<SparseMatrix,Vector>;
 
     friend std::ostream & operator<< (std::ostream &, Vector &x);
+    */
 };
     
 Scalar norm(const Vector x);
@@ -95,6 +109,7 @@ std::ostream & operator<< (std::ostream &, Vector &x);
 
 Vector operator+ (const Vector &a, const Vector &b);
 void op_plus_impl(const Vector a, const Vector b, Vector ab);
+void op_plus_eq_impl(Vector a, const Vector b);
 
 Vector operator- (const Vector &a, const Vector &b);
 void op_sub_impl(const Vector a, const Vector b, Vector ab);
@@ -119,15 +134,15 @@ void multi_dot(size_t n,
 void multi_dot(size_t n, double *a, double *b, double *ab,
     CountdownLatch &cl);
 
-class Scalar
+class Scalar : public Object<double*>
 {
   public:
     Scalar();
     explicit Scalar(double value);
 
-    double & operator()();
+    double & operator()() const;
     bool operator==(const Scalar &s);
-    ObjectState state() const;
+    //ObjectState state() const;
 
     Scalar & operator+= (const Scalar&);
     Scalar & operator-= (const Scalar&);
@@ -135,6 +150,7 @@ class Scalar
     Scalar & operator/= (const Scalar&);
 
   private:
+    /*
     double *_;
     ObjectState *_state{new ObjectState};
     std::shared_ptr<std::mutex> _mtx{new std::mutex};
@@ -154,6 +170,7 @@ class Scalar
     friend class OperandStasis<Vector,Scalar>;
 
     friend Scalar sqrt(const Scalar);
+    */
     
 };
 
@@ -176,18 +193,31 @@ class Column
   public:
     Column() = delete;
     Column & operator= (const Vector &);
+    Column & operator-= (const Vector &);
+    Column & operator+= (const Vector &);
     bool operator== (const Vector &);
+    
+    Matrix *origin;
+    size_t index;
 
   private:
     Column(Matrix *origin, size_t index);
-    Matrix *_origin;
-    size_t _index;
 
     friend class Matrix;
     friend class Vector;
+
+    /*
+    friend void op_eq_impl(Column c, Vector x);
+    friend void op_minus_eq_impl(Column c, Vector x);
+    friend void op_plus_eq_impl(Column c, Vector x);
+    */
 };
 
-class Matrix
+void op_eq_impl(Column c, Vector x);
+void op_minus_eq_impl(Column c, Vector x);
+void op_plus_eq_impl(Column c, Vector x);
+
+class Matrix : public Object<double*>
 {
   public:
     Matrix(size_t m, size_t n);
@@ -198,15 +228,16 @@ class Matrix
     
     Matrix & operator*= (const Matrix &);
 
-    double & operator()(size_t i, size_t j);
+    double & operator()(size_t i, size_t j) const;
     Column C(size_t index);
     ColumnRange C(size_t begin, size_t end);
 
     size_t m() const, n() const;
-    ObjectState state() const;
+    //ObjectState state() const;
 
   private:
     size_t _m, _n;
+    /*
     double *_;
     ObjectState *_state{new ObjectState};
     std::shared_ptr<std::mutex> _mtx{new std::mutex};
@@ -217,14 +248,23 @@ class Matrix
 
     friend void op_mul_impl(const ColumnRange C, const Vector x, Vector Cx);
     friend void op_mul_impl_T(const ColumnRange C, const Vector x, Vector Cx);
+    
+    friend void op_eq_impl(Column c, Vector x,
+        OperandStasis<Matrix,Vector> *osp);
+    friend void op_minus_eq_impl(Column c, Vector x,
+        OperandStasis<Matrix,Vector> *osp);
+    friend void op_plus_eq_impl(Column c, Vector x);
 
     friend class Vector;
     friend class Column;
     friend class OperandStasis<Matrix>;
     friend class OperandStasis<Matrix,Vector>;
     friend class OperandStasis<Vector,Matrix>;
+    friend class OperandStasis<SparseMatrix,Matrix>;
+    friend class OperandStasis<Matrix,SparseMatrix>;
 
     friend std::ostream & operator<< (std::ostream &, Matrix &x);
+    */
 };
 
 std::ostream & operator<< (std::ostream &, Matrix &x);
@@ -244,13 +284,16 @@ class ColumnRange
     size_t m() const, n() const;
 
     bool transposed{false};
+    
+    Matrix *origin;
+    size_t begin, end;
 
   private:
-    Matrix *_origin;
-    size_t _begin, _end;
 
+    /*
     friend void op_mul_impl(const ColumnRange C, const Vector x, Vector Cx);
     friend void op_mul_impl_T(const ColumnRange C, const Vector x, Vector Cx);
+    */
 };
 
 Vector operator* (const ColumnRange &C, const Vector &x);
@@ -258,7 +301,16 @@ Vector operator* (const ColumnRange &C, const Column &x);
 void op_mul_impl(const ColumnRange C, const Vector x, Vector Cx);
 void op_mul_impl_T(const ColumnRange C, const Vector x, Vector Cx);
 
-class SparseMatrix
+struct SparseMatrixData
+{
+  size_t *r{nullptr}, *c{nullptr};
+  double *v{nullptr};
+
+  SparseMatrixData() = default;
+  SparseMatrixData(size_t *r, size_t *c, double *v); 
+};
+
+class SparseMatrix : public Object<SparseMatrixData>
 {
   public:
     SparseMatrix(size_t m, size_t n, size_t z);
@@ -270,23 +322,36 @@ class SparseMatrix
     double & operator()(size_t i, size_t j);
 
     size_t m() const, n() const, z() const;
-    ObjectState state() const;
+    //ObjectState state() const;
+    
+    size_t *r() const, *c() const;
+    double *v() const;
 
   private:
     size_t _m, _n, _z;
+    /*
     size_t *_r, *_c;
     double *_v;
     ObjectState *_state{new ObjectState};
     std::shared_ptr<std::mutex> _mtx{new std::mutex};
     std::shared_ptr<std::condition_variable> _cnd{new std::condition_variable};
+    */
 
     double & _at(size_t i, size_t j);
 
-    friend void op_mul_impl(const SparseMatrix A, const Vector x, Vector Ax);
+    /*
+    friend void op_mul_impl(const SparseMatrix A, const Vector x, Vector Ax,
+        OperandStasis<SparseMatrix,Vector>*);
+
+    friend void op_mul_impl(const SparseMatrix A, const Column cx, Vector Ax,
+        OperandStasis<SparseMatrix, Matrix> *osp);
     
     friend class OperandStasis<SparseMatrix>;
     friend class OperandStasis<Vector,SparseMatrix>;
     friend class OperandStasis<SparseMatrix,Vector>;
+    friend class OperandStasis<SparseMatrix,Matrix>;
+    friend class OperandStasis<Matrix,SparseMatrix>;
+    */
     
 };
 
@@ -298,6 +363,8 @@ void multi_sparse_dot(size_t z,
 
 Vector operator* (const SparseMatrix &A, const Vector &x);
 void op_mul_impl(const SparseMatrix A, const Vector x, Vector Ax);
+
+void op_mul_impl(const SparseMatrix A, const Column cx, Vector Ax);
 
 Vector operator* (const SparseMatrix &A, const Column &x);
 

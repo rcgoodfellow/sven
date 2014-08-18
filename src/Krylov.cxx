@@ -26,21 +26,53 @@ Arnoldi::Arnoldi(size_t n, SparseMatrix A, Vector x0, Vector b)
 size_t Arnoldi::N() const { return A.m(); }
 size_t Arnoldi::n() const { return _n; }
 
+using std::mutex;
+
 void Arnoldi::operator()()
 {
   r0 = b - A*x0;
   r0 /= norm(r0);
   Q.C(0) = r0;
 
-  for(size_t i=0; i<_n; ++i)
+  mutex print_mutex{};
+
+  for(size_t i=0; i<_n-1; ++i)
   {
     Q.C(i+1) = A*Q.C(i);
-    std::cout << "Q" << std::endl;
-    std::cout << Q << std::endl;
 
+    internal::RT::Q().push(
+        [&print_mutex, this]() {
+          print_mutex.lock();
+          std::cout << "Q" << std::endl;
+          std::cout << Q << std::endl;
+          print_mutex.unlock();
+      });
+
+    /*
     H.C(i) = T(Q.C(0,i)) * Q.C(i+1);
     std::cout << "H" << std::endl;
     std::cout << H << std::endl;
+    */
+    Q.C(i+1) -= r0;// Q.C(0,i) * H.C(i);
+
+    internal::RT::Q().push(
+        [&print_mutex, this]() {
+            print_mutex.lock();
+            std::cout << "Q" << std::endl;
+            std::cout << Q << std::endl;
+            print_mutex.unlock();
+      });
+
+    //reortho
+    //Vector s = T(Q.C(0,i)) * Q.C(i+1);
+    //Q.C(i+1) -= Q.C(0,i) * s;
+    //H.C(i) += s;
+    //s(0);
+  }
+
+  while(internal::RT::get().active_jobs > 0 || !internal::RT::Q().empty())
+  {
+    usleep(10);
   }
 
 }

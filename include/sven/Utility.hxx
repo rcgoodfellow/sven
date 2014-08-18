@@ -26,6 +26,9 @@
   std::to_string(__LINE__) + \
   std::string(":") + std::string(__func__)
 
+#include <iostream>
+#include <string>
+
 namespace sven {
 
 //Allocate a typed, aligned chunk of memory without havint to do the typecast
@@ -35,6 +38,107 @@ T* alloc(size_t sz)
 {
   return (T*)_mm_malloc(sizeof(T)*sz, SVEN_DEFAULT_ALIGN);
 }
+
+#define WAIT_GUARD(__X__) \
+  std::lock_guard<std::mutex> lk##__X__{*__X__.wait().mutex(), std::adopt_lock};
+
+#define WAIT_GUARD_THIS() \
+  std::lock_guard<std::mutex> lkme{*this->wait().mutex(), std::adopt_lock};
+
+#define MOD_GUARD(__X__) \
+  std::lock_guard<std::mutex> lk##__X__{*__X__.mod_wait().mutex(), \
+                                                          std::adopt_lock};
+
+#define HOLD_GUARD(__X__) \
+  std::lock_guard<std::mutex> lk##__X__{*__X__.hold().mutex(), std::adopt_lock};
+
+#define BINOP_GUARD(__A__, __B__, __AB__) \
+  WAIT_GUARD(__A__); \
+  WAIT_GUARD(__B__); \
+  MOD_GUARD(__AB__);
+
+
+template<class T>
+class Object
+{
+  public:
+    size_t tick()
+    {
+      return ++_scheduled_version;
+    }
+    
+    size_t tock()
+    {
+      ++(*_current_version);
+      _cnd->notify_all();
+      return *_current_version;
+    }
+
+    bool up_to_date() const
+    {
+      return *_current_version == _scheduled_version;
+    }
+
+    std::unique_lock<std::mutex> wait() const
+    {
+      std::unique_lock<std::mutex> lk{*_mtx};
+      //std::cout << *_current_version << " : " 
+      //          << _scheduled_version << std::endl;
+      if(!up_to_date())
+      {
+        _cnd->wait(lk, 
+            [this](){return *_current_version == _scheduled_version;});
+      }
+      return lk;
+    }
+
+    std::unique_lock<std::mutex> mod_wait() const
+    {
+      std::unique_lock<std::mutex> lk{*_mtx};
+      if(*_current_version <= (_scheduled_version - 1))
+      {
+        _cnd->wait(lk, 
+            [this](){return *_current_version == (_scheduled_version - 1);});
+      }
+      return lk;
+    }
+
+    std::unique_lock<std::mutex> hold() const
+    {
+      return std::unique_lock<std::mutex>{*_mtx};
+    }
+
+    Object(T data) : _data{data}
+    {
+      *_current_version = 0;
+    }
+
+    /*
+    Object() = delete;
+    Object(const Object& obj)
+    {
+      WAIT_GUARD(obj);
+      _data = obj._data;
+      //do not carry over version info
+    }
+
+    Object & operator= (const Object & obj)
+    {
+      WAIT_GUARD(obj);
+      _data = obj._data;
+      //do not carry over version info
+      return *this;
+    }
+    */
+
+  protected:
+    T _data;
+    size_t *_current_version{new size_t};
+    size_t _scheduled_version{0};
+
+    std::shared_ptr<std::mutex> _mtx{new std::mutex};
+    std::shared_ptr<std::condition_variable> _cnd{new std::condition_variable};
+};
 
 class CountdownLatch
 {

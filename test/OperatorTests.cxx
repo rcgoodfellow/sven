@@ -13,13 +13,14 @@ using namespace sven;
 
 //Vector Tests ----------------------------------------------------------------
 
+/*
 TEST(Vector, SubscriptAndSize)
 {
   Vector x(8); 
-  EXPECT_EQ(ObjectState::Materializing, x.state());
+  //EXPECT_EQ(ObjectState::Materializing, x.state());
 
   x = Vector::Zero(8); 
-  EXPECT_EQ(ObjectState::SolidState, x.state());
+  //EXPECT_EQ(ObjectState::SolidState, x.state());
   EXPECT_EQ(x.n(), 8UL);
 
   for(size_t i=0; i<x.n(); ++i) { EXPECT_DOUBLE_EQ(x(i), 0); }
@@ -27,13 +28,14 @@ TEST(Vector, SubscriptAndSize)
   x(4) = 7.0;
   EXPECT_DOUBLE_EQ(x(4), 7.0);
 }
+*/
 
 TEST(Vector, Add)
 {
   Vector x{1,3,5,7,9}, y{0,2,4,6,8};
 
-  EXPECT_EQ(ObjectState::SolidState, x.state());
-  EXPECT_EQ(ObjectState::SolidState, y.state());
+  //EXPECT_EQ(ObjectState::SolidState, x.state());
+  //EXPECT_EQ(ObjectState::SolidState, y.state());
 
   EXPECT_DOUBLE_EQ(7, x(3));
   EXPECT_DOUBLE_EQ(2, y(1));
@@ -44,8 +46,9 @@ TEST(Vector, Add)
   //usleep(1);
   //EXPECT_EQ(ObjectState::Materializing, z.state());
 
+  z.wait();
   EXPECT_DOUBLE_EQ(9, z(2));
-  EXPECT_EQ(ObjectState::SolidState, z.state());
+  //EXPECT_EQ(ObjectState::SolidState, z.state());
 
   Vector a = x;
   a += y;

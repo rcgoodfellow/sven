@@ -22,51 +22,59 @@ using std::to_string;
 using std::vector;
 using std::setprecision;
 using std::fixed;
+using std::adopt_lock;
 
 //~= Vector ~=-----------------------------------------------------------------
 Vector::Vector(size_t n) 
-  : _n{n}, _{alloc<double>(n)},
-    _state{new ObjectState},
-    _mtx{new mutex},
-    _cnd{new condition_variable}
+  : Object{alloc<double>(n)},
+    _n{n}
 { 
-  *_state = ObjectState::Materializing;
+  tick();
 }
 
 Vector::Vector(initializer_list<double> xs)
   : Vector(xs.size())
 {
   size_t i{0};
-  for(auto d : xs){ _[i++] = d; }
-  *_state = ObjectState::SolidState;
-  _cnd->notify_all();
+  for(auto d : xs){ _data[i++] = d; }
+  tock();
+}
+
+Vector::Vector(const Vector &x)
+  : Object(x), _n{x.n()}
+{
+  //tick();
+  //tock();
 }
 
 Vector::Vector(const Column &c)
-  : Vector(c._origin->m())
+  : Vector(c.origin->m())
 {
-  for(size_t i=0; i<_n; ++i) { _[i] = c._origin->_[c._origin->_n*i + c._index]; }
-  *_state = ObjectState::SolidState;
-  _cnd->notify_all();
+  for(size_t i=0; i<_n; ++i) 
+  { 
+    this->operator()(i) = (*c.origin)(c.origin->n()*i, c.index); 
+  }
+  tock();
 }
 
-Vector Vector::Zero(size_t n)
+Vector Vector::Zero(size_t n, bool ready)
 {
   Vector x(n);
   for(size_t i=0; i<n; ++i)
   {
-    x._[i] = 0;
+    x._data[i] = 0;
   }
-  *x._state = ObjectState::SolidState;
-  x._cnd->notify_all();
+  if(ready) { x.tock(); }
   return x;
 }
 
 size_t Vector::n() const { return _n; }
 
-double & Vector::operator()(size_t i)
+double & Vector::operator()(size_t i) const
 { 
-  unique_lock<mutex> lk{*_mtx};
+  //lock_guard<mutex> lg{*wait().mutex(), adopt_lock};
+  return _data[i];
+  /*
   switch(*_state)
   {
     case ObjectState::Materializing: 
@@ -83,12 +91,14 @@ double & Vector::operator()(size_t i)
       lk.unlock();
       throw runtime_error("attempt to access vaporized object" + CRIME_SCENE);
   }
+  */
 }
 
-ObjectState Vector::state() const { return *_state; }
+//ObjectState Vector::state() const { return *_state; }
 
 bool Vector::operator== (const Vector &x)
 {
+  /*
   unique_lock<mutex> lk_me{*_mtx}, lk_x{*x._mtx};
   if(*_state != ObjectState::SolidState) 
   { 
@@ -102,40 +112,49 @@ bool Vector::operator== (const Vector &x)
     x._cnd->wait(lk_x); 
     lk_me.lock();
   }
+  */
+  std::lock_guard<mutex> lk{*wait().mutex(), adopt_lock};
 
   if(x._n != _n){ return false; }
 
   bool result{true};
   for(size_t i=0; i<_n; ++i)
   {
-    if(x._[i] != _[i]) { result = false; break; }  
+    if(x._data[i] != _data[i]) { result = false; break; }  
   }
 
-  lk_me.unlock();
-  lk_x.unlock();
+  //lk_me.unlock();
+  //lk_x.unlock();
   return result;
 }
 
 Vector & Vector::operator+= (const Vector &x)
 {
-  *this = *this + x;
+  tick();
+
+  internal::Thunk t = [this,x]{ op_plus_eq_impl(*this, x); };
+  internal::RT::Q().push(t);
+  
   return *this;
 }
 
 Vector & Vector::operator-= (const Vector &x)
 {
+  tick();
   *this = *this - x;
   return *this;
 }
 
 Vector & Vector::operator*= (const Scalar &x)
 {
+  tick();
   *this = *this * x;
   return *this;
 }
 
 Vector & Vector::operator/= (const Scalar &x)
 {
+  tick();
   *this = *this / x;
   return *this;
 }
@@ -147,37 +166,43 @@ Scalar sven::norm(const Vector x)
 
 Scalar & Scalar::operator+= (const Scalar &x)
 {
+  tick();
   *this = *this + x;
   return *this;
 }
 
 Scalar & Scalar::operator-= (const Scalar &x)
 {
+  tick();
   *this = *this - x;
   return *this;
 }
 
 Scalar & Scalar::operator*= (const Scalar &x)
 {
+  tick();
   *this = *this * x;
   return *this;
 }
 
 Scalar & Scalar::operator/= (const Scalar &x)
 {
+  tick();
   *this = *this / x;
   return *this;
 }
     
 std::ostream & sven::operator<< (std::ostream &o, Vector &x)
 {
-  unique_lock<mutex> lk{*x._mtx};
-  if(x.state() != ObjectState::SolidState) { x._cnd->wait(lk); }
-  for(size_t i=0; i<x._n; ++i)
+  WAIT_GUARD(x);
+
+  size_t n = x.n();
+  for(size_t i=0; i<n; ++i)
   {
-    o << x._[i] << " ";
+    o << x(i) << " ";
   }
-  lk.unlock();
+  
+  //lk.unlock();
   return o;
 }
 
@@ -196,13 +221,21 @@ Vector sven::operator+ (const Vector &a, const Vector &b)
 
 void sven::op_plus_impl(const Vector a, const Vector b, Vector ab)
 {
-  OperandStasis<Vector> os{a,b};
-  lock_guard<mutex> lk_ab{*ab._mtx};
+  BINOP_GUARD(a, b, ab);
 
-  for(size_t i=0; i<a._n; ++i) { ab._[i] = a._[i] + b._[i]; }
+  for(size_t i=0; i<a.n(); ++i) { ab(i) = a(i) + b(i); }
 
-  *ab._state = ObjectState::SolidState;
-  ab._cnd->notify_all();
+  ab.tock();
+}
+
+void sven::op_plus_eq_impl(Vector a, const Vector b)
+{
+  MOD_GUARD(a);
+  WAIT_GUARD(b);
+
+  for(size_t i=0; i<a.n(); ++i){ a(i) += b(i); }
+
+  a.tock();
 }
 
 Vector sven::operator- (const Vector &a, const Vector &b)
@@ -220,13 +253,11 @@ Vector sven::operator- (const Vector &a, const Vector &b)
 
 void sven::op_sub_impl(const Vector a, const Vector b, Vector ab)
 {
-  OperandStasis<Vector> os{a,b};
-  lock_guard<mutex> lk_ab{*ab._mtx};
+  BINOP_GUARD(a, b, ab);
 
-  for(size_t i=0; i<a._n; ++i) { ab._[i] = a._[i] - b._[i]; }
+  for(size_t i=0; i<a.n(); ++i) { ab(i) = a(i) - b(i); }
 
-  *ab._state = ObjectState::SolidState;
-  ab._cnd->notify_all();
+  ab.tock();
 }
 
 
@@ -266,13 +297,11 @@ double sven::dot(size_t n, double *a, double *b)
 
 void sven::op_dot_impl(const Vector a, const Vector b, Scalar ab)
 {
-  OperandStasis<Vector> os{a,b};
-  lock_guard<mutex> lk_ab{*ab._mtx};
+  BINOP_GUARD(a, b, ab);
 
-  *ab._ = dot(a.n(), a._, b._);
+  ab() = dot(a.n(), &a(0), &a(0));
 
-  *ab._state = ObjectState::SolidState;
-  ab._cnd->notify_all();
+  ab.tock();
 }
 
 Vector sven::operator/ (const Vector &a, const Scalar &b)
@@ -285,13 +314,11 @@ Vector sven::operator/ (const Vector &a, const Scalar &b)
 
 void sven::op_div_impl(const Vector a, const Scalar b, Vector ab)
 {
-  OperandStasis<Vector,Scalar> os{a,b};
-  lock_guard<mutex> lk_ab{*ab._mtx};
+  BINOP_GUARD(a, b, ab);
 
-  for(size_t i=0; i<a._n; ++i) { ab._[i] = a._[i] / *b._; }
+  for(size_t i=0; i<a.n(); ++i) { ab(i) = a(i) / b(); }
 
-  *ab._state = ObjectState::SolidState;
-  ab._cnd->notify_all();
+  ab.tock();
 }
 
 Vector sven::operator* (const Vector &a, const Scalar &b)
@@ -304,36 +331,36 @@ Vector sven::operator* (const Vector &a, const Scalar &b)
 
 void sven::op_mul_impl(const Vector a, const Scalar b, Vector ab)
 {
-  OperandStasis<Vector,Scalar> os{a,b};
-  lock_guard<mutex> lk_ab{*ab._mtx};
-  
-  for(size_t i=0; i<a._n; ++i) { ab._[i] = a._[i] * *b._; }
+  BINOP_GUARD(a, b, ab);
 
-  *ab._state = ObjectState::SolidState;
-  ab._cnd->notify_all();
+  for(size_t i=0; i<a.n(); ++i) { ab(i) = a(i) * b(); }
+
+  ab.tock();
 }
 
 //~= Scalar ~=-----------------------------------------------------------------
-Scalar::Scalar() : _{alloc<double>(1)} 
+Scalar::Scalar() : Object(alloc<double>(1))
 {
-  *_state = ObjectState::Materializing;
+  tick();
 } 
 
 Scalar::Scalar(double value) : Scalar() 
 { 
-  *_ = value; 
-  *_state = ObjectState::SolidState;
+  *_data = value; 
+  tock();
 }
 
 Scalar sven::sqrt(const Scalar x)
 {
-  OperandStasis<Scalar> os(x, x);
-  Scalar s(::sqrt(*x._));
+  WAIT_GUARD(x);
+  Scalar s(::sqrt(x()));
   return s;
 }
 
-double & Scalar::operator()() 
+double & Scalar::operator()() const
 { 
+  return *_data;
+  /*
   unique_lock<mutex> lk{*_mtx};
   switch(*_state)
   {
@@ -351,15 +378,18 @@ double & Scalar::operator()()
       lk.unlock();
       throw runtime_error("attempt to access vaporized object" + CRIME_SCENE);
   }
+  */
 }
 
 bool Scalar::operator==(const Scalar &s)
 {
-  OperandStasis<Scalar> os{*this, s};
-  return *_ == *s._;
+  WAIT_GUARD_THIS();
+  WAIT_GUARD(s);
+
+  return this->operator()() == s();
 }
 
-ObjectState Scalar::state() const { return *_state; }
+//ObjectState Scalar::state() const { return *_state; }
 
 Scalar sven::operator+ (const Scalar &a, const Scalar &b)
 {
@@ -371,13 +401,11 @@ Scalar sven::operator+ (const Scalar &a, const Scalar &b)
 
 void sven::op_plus_impl(const Scalar a, const Scalar b, Scalar ab)
 {
-  OperandStasis<Scalar> os{a,b};
-  lock_guard<mutex> lk_ab{*ab._mtx};
+  BINOP_GUARD(a, b, ab);
 
-  *ab._ = *a._ + *b._;
+  ab() = a() + b();
 
-  *ab._state = ObjectState::SolidState;
-  ab._cnd->notify_all();
+  ab.tock();
 }
 
 Scalar sven::operator- (const Scalar &a, const Scalar &b)
@@ -390,13 +418,12 @@ Scalar sven::operator- (const Scalar &a, const Scalar &b)
 
 void sven::op_sub_impl(const Scalar a, const Scalar b, Scalar ab)
 {
-  OperandStasis<Scalar> os{a,b};
-  lock_guard<mutex> lk_ab{*ab._mtx};
 
-  *ab._ = *a._ - *b._;
+  BINOP_GUARD(a, b, ab);
 
-  *ab._state = ObjectState::SolidState;
-  ab._cnd->notify_all();
+  ab() = a() - b();
+
+  ab.tock();
 }
 
 Scalar sven::operator* (const Scalar &a, const Scalar &b)
@@ -409,13 +436,11 @@ Scalar sven::operator* (const Scalar &a, const Scalar &b)
 
 void sven::op_mul_impl(const Scalar a, const Scalar b, Scalar ab)
 {
-  OperandStasis<Scalar> os{a,b};
-  lock_guard<mutex> lk_ab{*ab._mtx};
+  BINOP_GUARD(a, b, ab);
 
-  *ab._ = *a._ * *b._;
+  ab() = a() * b();
 
-  *ab._state = ObjectState::SolidState;
-  ab._cnd->notify_all();
+  ab.tock();
 }
 
 Scalar sven::operator/ (const Scalar &a, const Scalar &b)
@@ -428,22 +453,20 @@ Scalar sven::operator/ (const Scalar &a, const Scalar &b)
 
 void sven::op_div_impl(const Scalar a, const Scalar b, Scalar ab)
 {
-  OperandStasis<Scalar> os{a,b};
-  lock_guard<mutex> lk_ab{*ab._mtx};
+  BINOP_GUARD(a, b, ab);
 
-  *ab._ = *a._ / *b._;
+  ab() = a() / b();
 
-  *ab._state = ObjectState::SolidState;
-  ab._cnd->notify_all();
+  ab.tock();
 }
 
 //~= Matrix ~=-----------------------------------------------------------------
 
 Matrix::Matrix(size_t m, size_t n)
-  : _m{m}, _n{n},
-    _{alloc<double>(m*n)}
+  : Object(alloc<double>(m*n)),
+    _m{m}, _n{n}
 {
-  *_state = ObjectState::Materializing;
+  tick();
 }
 
 Matrix::Matrix(size_t m, size_t n, vector<double> values)
@@ -454,9 +477,8 @@ Matrix::Matrix(size_t m, size_t n, vector<double> values)
     throw runtime_error("non-conformal operation:" + CRIME_SCENE); 
   }
 
-  for(size_t i=0; i<m*n; ++i) { _[i] = values[i]; }
-  *_state = ObjectState::SolidState;
-  _cnd->notify_all();
+  for(size_t i=0; i<m*n; ++i) { _data[i] = values[i]; }
+  tock();
 }
 
 Matrix Matrix::Zero(size_t m, size_t n)
@@ -464,61 +486,48 @@ Matrix Matrix::Zero(size_t m, size_t n)
   Matrix A{m,n};
   for(size_t i=0; i<m*n; ++i)
   {
-    A._[i] = 0;
+    A._data[i] = 0;
   }
-  *A._state = ObjectState::SolidState;
-  A._cnd->notify_all();
+  A.tock();
   return A;
 }
 
 Matrix Matrix::Identity(size_t m, size_t n)
 {
   Matrix A = Matrix::Zero(m,n);
-  for(size_t i=0; i<max(m,n); ++i){ A._[i*n + i] = 1; }
-  *A._state = ObjectState::SolidState;
-  A._cnd->notify_all();
+
+  for(size_t i=0; i<max(m,n); ++i){ A(i*n, i) = 1; }
+
+  A.tock();
   return A;
 }
 
 bool Matrix::operator== (const Matrix &A)
 {
-  unique_lock<mutex> lk_me{*_mtx}, lk_A{*A._mtx};
-  if(*_state != ObjectState::SolidState)
-  {
-    lk_A.unlock();
-    _cnd->wait(lk_me);
-    lk_A.lock();
-  }
-  if(*A._state != ObjectState::SolidState)
-  {
-    lk_me.unlock();
-    A._cnd->wait(lk_A);
-    lk_me.lock();
-  }
+  WAIT_GUARD_THIS();
+  WAIT_GUARD(A);
 
-  if(A._m != _m || A._n != _n){ return false; }
+  if(A.m() != m() || A.n() != n()){ return false; }
 
   bool result{true};
   for(size_t i=0; i<_n*_m; ++i)
   {
-    if(A._[i] != _[i]){ result = false; break; }
+    if(A._data[i] != _data[i]){ result = false; break; }
   }
 
-  lk_me.unlock();
-  lk_A.unlock();
   return result;
 }
 
 std::ostream & sven::operator<< (std::ostream &o, Matrix &A)
 {
-  OperandStasis<Matrix> os{A};
+  WAIT_GUARD(A);
 
   o << setprecision(3) << fixed;
-  for(size_t i=0; i<A._m; ++i)
+  for(size_t i=0; i<A.m(); ++i)
   {
-    for(size_t j=0; j<A._n; ++j)
+    for(size_t j=0; j<A.n(); ++j)
     {
-      o << A._[i*A._n + j] << " ";
+      o << A(i*A.n(), j) << " ";
     }
     o << "\n";
   }
@@ -531,8 +540,9 @@ Matrix & Matrix::operator*= (const Matrix &A)
   return *this;
 }
 
-double & Matrix::operator()(size_t i, size_t j)
+double & Matrix::operator()(size_t i, size_t j) const
 {
+  /*
   unique_lock<mutex> lk{*_mtx};
   switch(*_state)
   {
@@ -550,11 +560,14 @@ double & Matrix::operator()(size_t i, size_t j)
       lk.unlock();
       throw runtime_error("attempt to access vaporized object" + CRIME_SCENE);
   }
+  */
+      
+  return _data[i*_n + j];
 }
 
 size_t Matrix::m() const { return _m; }
 size_t Matrix::n() const { return _n; }
-ObjectState Matrix::state() const { return *_state; }
+//ObjectState Matrix::state() const { return *_state; }
 
 Vector sven::operator* (const Matrix &A, const Vector &x)
 {
@@ -590,29 +603,21 @@ void sven::multi_dot(size_t n,
 
 void sven::op_mul_impl(const Matrix A, const Vector x, Vector Ax)
 {
-  //TODO: This nested thunking is not necessary since this function
-  //is already wrapped within a thunk to begin with
-  internal::Thunk th = [A,x,Ax]()
+  BINOP_GUARD(A, x, Ax);
+  CountdownLatch cl{static_cast<int>(A.n())};
+
+  for(size_t i=0; i<A.n(); ++i)
   {
-    OperandStasis<Matrix,Vector> os{A,x};
-    lock_guard<mutex> lk_Ax{*Ax._mtx};
-    CountdownLatch cl{static_cast<int>(A.n())};
+    internal::Thunk t = [A, x, Ax, &cl, i]()
+    { 
+      multi_dot(A.n(), &A(i,0), &x(0), &Ax(i), cl); 
+    };
 
-    for(size_t i=0; i<A.n(); ++i)
-    {
-      internal::Thunk t = [A, x, Ax, &cl, i]()
-      { 
-        multi_dot(A.n(), &A._[i*A.n()], x._, &Ax._[i], cl); 
-      };
+    internal::RT::Q().push(t);
+  }
+  cl.wait();
 
-      internal::RT::Q().push(t);
-    }
-    cl.wait();
-    *Ax._state = ObjectState::SolidState;
-    Ax._cnd->notify_all();
-  };
-
-  internal::RT::Q().push(th);
+  Ax.tock();
 }
 
 Matrix sven::operator* (const Matrix &A, const Matrix &B)
@@ -630,33 +635,27 @@ Matrix sven::operator* (const Matrix &A, const Matrix &B)
 
 void sven::op_mul_impl(const Matrix A, const Matrix B, Matrix AB)
 {
-  internal::Thunk th = [A,B,AB]()
+  BINOP_GUARD(A, B, AB);
+  CountdownLatch cl{static_cast<int>(A.m()*B.n())};
+
+  for(size_t i=0; i<A.m(); ++i)
   {
-    OperandStasis<Matrix> os{A,B};
-    lock_guard<mutex> lk_AB{*AB._mtx};
-    CountdownLatch cl{static_cast<int>(A._m*B._n)};
-
-    for(size_t i=0; i<A._m; ++i)
+    for(size_t j=0; j<B.n(); ++j)
     {
-      for(size_t j=0; j<B._n; ++j)
+      internal::Thunk t = [A, B, AB, &cl, i, j]()
       {
-        internal::Thunk t = [A, B, AB, &cl, i, j]()
-        {
-          multi_dot(A._n, 
-              &A._[i*A._n], 1, 
-              &B._[j], B._n, 
-              &AB._[i*A._n + j], cl);
-        };
-
-        internal::RT::Q().push(t);
-      }
+        multi_dot(A.n(), 
+             &A(i,0), 1, 
+             &B(0,j), B.n(), 
+            &AB(i,j), 
+            cl);
+      };
+      internal::RT::Q().push(t);
     }
-    cl.wait();
-    *AB._state = ObjectState::SolidState;
-    AB._cnd->notify_all();
-  };
+  }
+  cl.wait();
 
-  internal::RT::Q().push(th);
+  AB.tock();
 }
 
 Column Matrix::C(size_t index)
@@ -672,52 +671,126 @@ ColumnRange Matrix::C(size_t begin, size_t end)
 //~=~ Column ~=~---------------------------------------------------------------
 
 Column::Column(Matrix *origin, size_t index)
-  : _origin{origin}, _index{index}
+  : origin{origin}, index{index}
 {}
     
 Column & Column::operator= (const Vector &x)
 {
-
-  unique_lock<mutex> lk{*x._mtx};
-  if(_origin->_m < x._n)
+  if(origin->m() < x.n())
   { 
-    lk.unlock();
     throw runtime_error("non-conformal operation:" + CRIME_SCENE); 
   }
-  if(*x._state != ObjectState::SolidState) { x._cnd->wait(lk); }
+ 
+  origin->tick();
+  
+  internal::Thunk t = [this,x](){op_eq_impl(*this, x);};
+  internal::RT::Q().push(t);
 
-  for(size_t i=0; i<_origin->_m; ++i)
-  {
-    _origin->_[i*_origin->_n + _index] = x._[i]; 
-  }
-  lk.unlock();
   return *this;
+}
+
+void sven::op_eq_impl(Column c, Vector x)
+{
+  WAIT_GUARD(x);
+  lock_guard<mutex> lkc{*c.origin->mod_wait().mutex(), std::adopt_lock};
+
+  size_t n = std::min(c.origin->m(), x.n());
+  for(size_t i=0; i<n; ++i)
+  {
+    //c._origin->_[i*c._origin->_n + c._index] = x._[i]; 
+    (*c.origin)(i, c.index) = x(i);
+  }
+
+  c.origin->tock();
+}
+
+using std::unique_ptr;
+Column & Column::operator-= (const Vector &x)
+{
+  if(origin->m() < x.n())
+  { 
+    throw runtime_error("non-conformal operation:" + CRIME_SCENE); 
+  }
+
+  origin->tick();
+
+  internal::Thunk t = 
+    [this,x](){op_minus_eq_impl(*this, x);};
+
+  internal::RT::Q().push(t);
+  
+  return *this;
+}
+
+void sven::op_minus_eq_impl(Column c, Vector x)
+{
+  WAIT_GUARD(x);
+  lock_guard<mutex> lkc{*c.origin->mod_wait().mutex(), std::adopt_lock};
+  
+  size_t n = std::min(c.origin->m(), x.n());
+  for(size_t i=0; i<n; ++i)
+  {
+    //c._origin->_[i*c._origin->_n + c._index] -= x._[i]; 
+    (*c.origin)(i, c.index) -= x(i);
+  }
+
+  c.origin->tock();
+}
+
+Column & Column::operator+= (const Vector &x)
+{
+  if(origin->m() < x.n())
+  { 
+    throw runtime_error("non-conformal operation:" + CRIME_SCENE); 
+  }
+
+  origin->tick();
+
+  internal::Thunk t = [this,x](){op_plus_eq_impl(*this, x);};
+  internal::RT::Q().push(t);
+  
+  return *this;
+}
+
+void sven::op_plus_eq_impl(Column c, Vector x)
+{
+  WAIT_GUARD(x);
+  lock_guard<mutex> lkc{*c.origin->mod_wait().mutex(), std::adopt_lock};
+
+  for(size_t i=0; i<c.origin->m(); ++i)
+  {
+    //c._origin->_[i*c._origin->_n + c._index] += x._[i]; 
+    (*c.origin)(i, c.index) += x(i);
+  }
+
+  c.origin->tock();
 }
 
 bool Column::operator== (const Vector &x)
 {
-  unique_lock<mutex> lk{*x._mtx};
-  if(*x._state != ObjectState::SolidState) { x._cnd->wait(lk); }
+  lock_guard<mutex> lkc{*origin->wait().mutex(), std::adopt_lock};
+  WAIT_GUARD(x);
   
-  if(_origin->_m != x._n) { lk.unlock(); return false; }
+  if(origin->m() != x.n()) { return false; }
 
   bool result{true};
-  for(size_t i=0; i<_origin->_m; ++i)
+  for(size_t i=0; i<origin->m(); ++i)
   {
-    if(_origin->_[i*_origin->_n + _index] != x._[i]){ result = false; break; }
+    //if(_origin->_[i*_origin->_n + _index] != x._[i]){ result = false; break; }
+    if((*origin)(i, index) != x(i)){ result = false; break; }
   }
-  lk.unlock();
+
   return result;
 }
 
 //~=~ Column Range ~=~---------------------------------------------------------
 
 ColumnRange::ColumnRange(Matrix *origin, size_t begin, size_t end)
-  : _origin{origin}, _begin{begin}, _end{end}
+  : origin{origin}, begin{begin}, end{end}
 {}
 
-size_t ColumnRange::m() const { return _origin->m(); }
-size_t ColumnRange::n() const { return _end - _begin +1; }
+size_t ColumnRange::m() const { return origin->m(); }
+size_t ColumnRange::n() const { return end - begin + 1; }
 
 Vector sven::operator* (const ColumnRange &C, const Vector &x)
 {
@@ -727,7 +800,7 @@ Vector sven::operator* (const ColumnRange &C, const Vector &x)
     {
       throw runtime_error("non-conformal operation:" + CRIME_SCENE);
     }
-    Vector Cx(C.n());
+    Vector Cx = Vector::Zero(C.n(), false);
     internal::Thunk t = [C,x,Cx](){ op_mul_impl_T(C,x,Cx); };
     internal::RT::Q().push(t);
     return Cx;
@@ -736,9 +809,9 @@ Vector sven::operator* (const ColumnRange &C, const Vector &x)
   {
     if(C.n() != x.n())
     {
-      throw runtime_error("non-conformal operation:" + CRIME_SCENE);
+      //throw runtime_error("non-conformal operation:" + CRIME_SCENE);
     }
-    Vector Cx(C.m());
+    Vector Cx = Vector::Zero(C.m(), false);
     internal::Thunk t = [C,x,Cx](){ op_mul_impl(C,x,Cx); };
     internal::RT::Q().push(t);
     return Cx;
@@ -748,60 +821,85 @@ Vector sven::operator* (const ColumnRange &C, const Vector &x)
 
 Vector sven::operator* (const ColumnRange &C, const Column &x)
 {
+  //OperandStasis<Matrix>(*x._origin);
+  lock_guard<mutex> lkc{*C.origin->wait().mutex(), adopt_lock};
+
   Vector cx = x;
   return C * cx;
 }
 
 void sven::op_mul_impl(const ColumnRange C, const Vector x, Vector Cx)
 {
-  OperandStasis<Matrix,Vector> os{*C._origin, x};
-  lock_guard<mutex> lk{*Cx._mtx};
-  CountdownLatch cl{static_cast<int>(C.n())};
+  lock_guard<mutex> lkc{*C.origin->wait().mutex(), adopt_lock};
+  WAIT_GUARD(x);
+  MOD_GUARD(Cx);
+  CountdownLatch cl{static_cast<int>(C.m())};
 
-  for(size_t i=0; i<C.n(); ++i)
+  for(size_t i=0; i<C.m(); ++i)
   {
     internal::Thunk t = [C,x,Cx,&cl,i]()
     {
-      multi_dot(C.n(), &C._origin->_[i*C.n()+C._begin], x._, &Cx._[i], cl);    
+      //multi_dot(C.n(), 
+      //    &C._origin->_[i*C._origin->_n+C._begin], x._, &Cx._[i], cl);    
+
+      multi_dot(C.n(),
+          &(*C.origin)(i, C.begin),
+          &x(0),
+          &Cx(i),
+          cl);
     };
     internal::RT::Q().push(t);
   }
   cl.wait();
-  *Cx._state = ObjectState::SolidState;
-  Cx._cnd->notify_all();
+
+  Cx.tock();
 }
 
 void sven::op_mul_impl_T(const ColumnRange C, const Vector x, Vector Cx)
 {
-  OperandStasis<Matrix,Vector> os{*C._origin, x};
-  lock_guard<mutex> lk{*Cx._mtx};
+  lock_guard<mutex> lkc{*C.origin->wait().mutex(), adopt_lock};
+  WAIT_GUARD(x);
+  MOD_GUARD(Cx);
   CountdownLatch cl{static_cast<int>(C.n())};
 
   for(size_t i=0; i<C.n(); ++i)
   {
     internal::Thunk t = [C,x,Cx,&cl,i]()
     {
-      multi_dot(C.n(), 
-          &C._origin->_[i*C.n()+C._begin], C.n(),
-          x._, 1,
-          &Cx._[i], cl);    
+      //multi_dot(C.m(), 
+      //    &C._origin->_[i+C._begin], C._origin->_n,
+      //    x._, 1,
+      //    &Cx._[i], cl);    
+      
+      multi_dot(C.m(), 
+          &(*C.origin)(0,i+C.begin), C.origin->n(),
+          &x(0), 1,
+          &Cx(i), cl);    
     };
     internal::RT::Q().push(t);
   }
   cl.wait();
-  *Cx._state = ObjectState::SolidState;
-  Cx._cnd->notify_all();
+
+  Cx.tock();
 }
 
 //~=~ SparseMatrix ~=~---------------------------------------------------------
+  
+SparseMatrixData::SparseMatrixData(size_t *r, size_t *c, double *v)
+  : r{r}, c{c}, v{v}
+{}
 
 SparseMatrix::SparseMatrix(size_t m, size_t n, size_t z)
-  : _m{m}, _n{n}, _z{z},
-    _r{alloc<size_t>(m)},
-    _c{alloc<size_t>(m*z)},
-    _v{alloc<double>(m*z)}
+  : 
+    Object(
+      SparseMatrixData(
+        alloc<size_t>(m),
+        alloc<size_t>(m*z),
+        alloc<double>(m*z))
+        ),
+    _m{m}, _n{n}, _z{z}
 {
-  *_state = ObjectState::Materializing;
+  tick();
 }
     
 SparseMatrix::SparseMatrix(size_t m, size_t n, size_t z, 
@@ -833,15 +931,15 @@ SparseMatrix::SparseMatrix(size_t m, size_t n, size_t z,
     {
       throw runtime_error("unreal sparse matrix cooridnates" + CRIME_SCENE);
     }
-    _r[i] = rs[i];
+    _data.r[i] = rs[i];
     for(size_t k=0; k<rs[i]; ++k, ++j)
     {
       if(cs[j] > n)
       {
         throw runtime_error("unreal sparse matrix cooridnates" + CRIME_SCENE);
       }
-      _c[i*z + k] = cs[j];
-      _v[i*z + k] = vs[j];
+      _data.c[i*z + k] = cs[j];
+      _data.v[i*z + k] = vs[j];
     }
   }
 
@@ -849,9 +947,8 @@ SparseMatrix::SparseMatrix(size_t m, size_t n, size_t z,
   {
     throw runtime_error("unreal sparse matrix cooridnates" + CRIME_SCENE);
   }
-  
-  *_state = ObjectState::SolidState;
-  _cnd->notify_all();
+
+  tock();
 }
 
 SparseMatrix SparseMatrix::Identity(size_t m, size_t n, size_t z)
@@ -859,20 +956,19 @@ SparseMatrix SparseMatrix::Identity(size_t m, size_t n, size_t z)
   SparseMatrix A(m, n, z);
   for(size_t i=0; i<max(m,n); ++i)
   {
-    A._r[i] = 1;
-    A._c[i*z] = i;
-    A._v[i*z] = 1;
+    A._data.r[i] = 1;
+    A._data.c[i*z] = i;
+    A._data.v[i*z] = 1;
   }
-  *A._state = ObjectState::SolidState;
-  A._cnd->notify_all();
+  A.tock();
   return A;
 }
 
 double & SparseMatrix::_at(size_t i, size_t j)
 {
-  for(size_t k=0; k<_r[i]; ++k)
+  for(size_t k=0; k<_data.r[i]; ++k)
   {
-    if(_c[_z*i + k] == j){return _v[_z*i + k];}
+    if(_data.c[_z*i + k] == j){return _data.v[_z*i + k];}
   }
 
   throw runtime_error("unreal sparse matrix coordinates" + CRIME_SCENE);
@@ -884,6 +980,9 @@ double & SparseMatrix::operator() (size_t i, size_t j)
   { 
     throw runtime_error("unreal sparse matrix coordinates" + CRIME_SCENE);
   }
+  return _at(i, j);
+
+  /*
   unique_lock<mutex> lk{*_mtx};
   switch(*_state)
   {
@@ -900,13 +999,18 @@ double & SparseMatrix::operator() (size_t i, size_t j)
       lk.unlock();
       throw runtime_error("attempt to access vaporized object" + CRIME_SCENE);
   }
+  */
   
 }
 
 size_t SparseMatrix::m() const { return _m; }
 size_t SparseMatrix::n() const { return _n; }
 size_t SparseMatrix::z() const { return _z; }
-ObjectState SparseMatrix::state() const { return *_state; }
+
+size_t* SparseMatrix::r() const { return _data.r; }
+size_t* SparseMatrix::c() const { return _data.c; }
+double* SparseMatrix::v() const { return _data.v; }
+//ObjectState SparseMatrix::state() const { return *_state; }
 
 Vector sven::operator* (const SparseMatrix &A, const Vector &x)
 {
@@ -923,8 +1027,22 @@ Vector sven::operator* (const SparseMatrix &A, const Vector &x)
 
 Vector sven::operator* (const SparseMatrix &A, const Column &x)
 {
-  Vector cx = x;
-  return A * cx;
+  //Vector cx = x;
+  //return A * cx;
+ 
+  /*
+  if(A.n() != x.n())
+  { 
+    throw runtime_error("non-conformal operation:" + CRIME_SCENE); 
+  }
+  */
+
+  //auto *ops = new OperandStasis<SparseMatrix, Matrix>(A,*x._origin);
+
+  Vector Ax(A.m());
+  internal::Thunk t = [A,x,Ax](){ op_mul_impl(A,x,Ax); };
+  internal::RT::Q().push(t);
+  return Ax;
 }
 
 void sven::multi_sparse_dot(size_t rz,
@@ -944,25 +1062,43 @@ void sven::multi_sparse_dot(size_t rz,
 
 void sven::op_mul_impl(const SparseMatrix A, const Vector x, Vector Ax)
 {
-  internal::Thunk th = [A,x,Ax]()
-  {
-    OperandStasis<SparseMatrix,Vector> os{A,x};
-    lock_guard<mutex> lk_Ax{*Ax._mtx};
-    CountdownLatch cl{static_cast<int>(A.n())};
+  BINOP_GUARD(A, x, Ax);
+  CountdownLatch cl{static_cast<int>(A.m())};
 
-    for(size_t i=0; i<A.n(); ++i)
+  for(size_t i=0; i<A.m(); ++i)
+  {
+    internal::Thunk t = [A,x,Ax,&cl,i]()
     {
-      internal::Thunk t = [A,x,Ax,&cl,i]()
-      {
-        multi_sparse_dot(A._r[i], &A._c[i*A._z], &A._v[i*A._z], x._, &Ax._[i], 
-            cl);
-      };
-      internal::RT::Q().push(t);
-    }
-    cl.wait();
-    *Ax._state = ObjectState::SolidState;
-    Ax._cnd->notify_all();
-  };
-  
-  internal::RT::Q().push(th);
+      multi_sparse_dot(A.r()[i], 
+          &A.c()[i*A.z()], &A.v()[i*A.z()], &x(0), &Ax(i), 
+          cl);
+    };
+    internal::RT::Q().push(t);
+  }
+  cl.wait();
+
+  Ax.tock();
+}
+
+void sven::op_mul_impl(const SparseMatrix A, const Column cx, Vector Ax)
+{
+  WAIT_GUARD(A);
+  lock_guard<mutex> lkcx{*cx.origin->wait().mutex(), adopt_lock};
+  MOD_GUARD(Ax);
+  CountdownLatch cl{static_cast<int>(A.n())};
+
+  Vector x = cx;
+  for(size_t i=0; i<A.m(); ++i)
+  {
+    internal::Thunk t = [A,x,Ax,&cl,i]()
+    {
+      multi_sparse_dot(A.r()[i], 
+          &A.c()[i*A.z()], &A.v()[i*A.z()], &x(0), &Ax(i), 
+          cl);
+    };
+    internal::RT::Q().push(t);
+  }
+  cl.wait();
+
+  Ax.tock();
 }
