@@ -76,17 +76,39 @@ class Object
 
     bool up_to_date() const
     {
-      return *_current_version == _scheduled_version;
+      return *_current_version >= _scheduled_version;
+    }
+    
+    bool up_to_date(size_t v) const
+    {
+      return *_current_version >= v;
     }
 
     std::unique_lock<std::mutex> wait() const
     {
+      //std::cout << "p" << std::endl;
       std::unique_lock<std::mutex> lk{*_mtx};
+      //std::cout << "q" << std::endl;
       if(!up_to_date())
       {
         _cnd->wait(lk, 
-            [this](){return *_current_version == _scheduled_version;});
+            [this](){return *_current_version >= _scheduled_version;});
       }
+      //std::cout << "r" << std::endl;
+      return lk;
+    }
+    
+    std::unique_lock<std::mutex> wait(size_t v) const
+    {
+      //std::cout << "p" << std::endl;
+      std::unique_lock<std::mutex> lk{*_mtx};
+      //std::cout << "q" << std::endl;
+      if(!up_to_date(v))
+      {
+        _cnd->wait(lk, 
+            [this,v](){return *_current_version >= v;});
+      }
+      //std::cout << "r" << std::endl;
       return lk;
     }
 
@@ -96,7 +118,7 @@ class Object
       if(*_current_version <= (_scheduled_version - 1))
       {
         _cnd->wait(lk, 
-            [this](){return *_current_version == (_scheduled_version - 1);});
+            [this](){return *_current_version >= (_scheduled_version - 1);});
       }
       return lk;
     }
@@ -110,6 +132,9 @@ class Object
     {
       *_current_version = 0;
     }
+
+    size_t scheduled_version() const { return _scheduled_version; }
+    size_t current_version() const { return _current_version; }
 
   protected:
     T _data;
@@ -130,6 +155,7 @@ class CountdownLatch
     void operator--(int);
     void operator++();
     void operator++(int);
+    int operator()();
 
   private:
     std::atomic<int> _cnt;

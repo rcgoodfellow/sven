@@ -30,38 +30,39 @@ using std::mutex;
 
 void Arnoldi::operator()()
 {
+  mutex print_mutex{};
+
   r0 = b - A*x0;
   r0 /= norm(r0);
   Q.C(0) = r0;
 
-  mutex print_mutex{};
+  print_mutex.lock();
+  std::cout << "Q" << std::endl;
+  std::cout << Q << std::endl;
+  print_mutex.unlock();
+
 
   for(size_t i=0; i<_n-1; ++i)
   {
     Q.C(i+1) = A*Q.C(i);
 
-    internal::RT::Q().push(
-        [&print_mutex, this]() {
-          print_mutex.lock();
-          std::cout << "Q" << std::endl;
-          std::cout << Q << std::endl;
-          print_mutex.unlock();
-      });
+    print_mutex.lock();
+    std::cout << "Q" << std::endl;
+    std::cout << Q << std::endl;
+    print_mutex.unlock();
 
     /*
     H.C(i) = T(Q.C(0,i)) * Q.C(i+1);
     std::cout << "H" << std::endl;
     std::cout << H << std::endl;
     */
-    Q.C(i+1) -= r0;// Q.C(0,i) * H.C(i);
 
-    internal::RT::Q().push(
-        [&print_mutex, this]() {
-            print_mutex.lock();
-            std::cout << "Q" << std::endl;
-            std::cout << Q << std::endl;
-            print_mutex.unlock();
-      });
+    //Q.C(i+1) -= r0;// Q.C(0,i) * H.C(i);
+
+    //print_mutex.lock();
+    //std::cout << "Q" << std::endl;
+    //std::cout << Q << std::endl;
+    //print_mutex.unlock();
 
     //reortho
     //Vector s = T(Q.C(0,i)) * Q.C(i+1);

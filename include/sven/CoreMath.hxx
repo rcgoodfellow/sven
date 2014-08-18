@@ -251,7 +251,7 @@ void multi_sparse_dot(size_t z,
 Vector operator* (const SparseMatrix &A, const Vector &x);
 void op_mul_impl(const SparseMatrix A, const Vector x, Vector Ax);
 
-void op_mul_impl(const SparseMatrix A, const Column cx, Vector Ax);
+void op_mul_impl(const SparseMatrix A, const Column cx, size_t cqv, Vector Ax);
 
 Vector operator* (const SparseMatrix &A, const Column &x);
 

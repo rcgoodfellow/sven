@@ -727,8 +727,10 @@ Column & Column::operator= (const Vector &x)
 
 void sven::op_eq_impl(Column c, Vector x)
 {
+  //std::cout << "J" << std::endl;
   WAIT_GUARD(x);
   lock_guard<mutex> lkc{*c.origin->mod_wait().mutex(), std::adopt_lock};
+  //std::cout << "K" << std::endl;
 
   size_t n = std::min(c.origin->m(), x.n());
   for(size_t i=0; i<n; ++i) { (*c.origin)(i, c.index) = x(i); }
@@ -1019,11 +1021,13 @@ Vector sven::operator* (const SparseMatrix &A, const Vector &x)
 Vector sven::operator* (const SparseMatrix &A, const Column &x)
 {
   Vector Ax(A.m());
-  internal::Thunk t = [A,x,Ax](){ op_mul_impl(A,x,Ax); };
+  size_t cqv = x.origin->scheduled_version();
+  internal::Thunk t = [A,x,Ax,cqv](){ op_mul_impl(A,x,cqv,Ax); };
   internal::RT::Q().push(t);
   return Ax;
 }
 
+#include <iostream>
 void sven::multi_sparse_dot(size_t rz,
     size_t *A_c, double *A_v,
     double *x,
@@ -1056,25 +1060,36 @@ void sven::op_mul_impl(const SparseMatrix A, const Vector x, Vector Ax)
   Ax.tock();
 }
 
-void sven::op_mul_impl(const SparseMatrix A, const Column cx, Vector Ax)
-{
-  WAIT_GUARD(A);
-  lock_guard<mutex> lkcx{*cx.origin->wait().mutex(), adopt_lock};
-  MOD_GUARD(Ax);
-  CountdownLatch cl{static_cast<int>(A.n())};
 
-  Vector x = cx;
+void sven::op_mul_impl(const SparseMatrix A, const Column cx, size_t cqv, 
+    Vector Ax)
+{
+  //std::cout << "a" << std::endl;
+  WAIT_GUARD(A);
+  //std::cout << "b" << std::endl;
+  lock_guard<mutex> lkcx{*cx.origin->wait(cqv).mutex(), adopt_lock};
+  //std::cout << "c" << std::endl;
+  MOD_GUARD(Ax);
+  //std::cout << "d" << std::endl;
+  CountdownLatch cl{static_cast<int>(A.m())};
+
+  size_t xn = cx.origin->m();
+  double *x = alloc<double>(xn);
+  for(size_t i=0; i<xn; ++i) { x[i] = (*cx.origin)(i, cx.index); }
+
   for(size_t i=0; i<A.m(); ++i)
   {
     internal::Thunk t = [A,x,Ax,&cl,i]()
     {
       multi_sparse_dot(A.r()[i], 
-          &A.c()[i*A.z()], &A.v()[i*A.z()], &x(0), &Ax(i), 
+          &A.c()[i*A.z()], &A.v()[i*A.z()], x, &Ax(i), 
           cl);
     };
     internal::RT::Q().push(t);
   }
+  //std::cout << "e" << std::endl;
   cl.wait();
+  //std::cout << "f" << std::endl;
 
   Ax.tock();
 }

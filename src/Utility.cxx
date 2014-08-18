@@ -19,7 +19,9 @@ CountdownLatch::CountdownLatch(int size)
 void CountdownLatch::wait()
 {
   unique_lock<mutex> lk{*_mtx};
-  _cnd->wait(lk);
+  if(_cnt > 0) {
+    _cnd->wait(lk);
+  }
   lk.unlock();
 }
 
@@ -34,15 +36,22 @@ void CountdownLatch::operator--()
 
 void CountdownLatch::operator--(int)
 {
-  this->operator--();
+  --_cnt;
+  if(_cnt <= 0){_cnd->notify_all();}
+  if(_cnt < 0){ _cnt = 0; }
 }
 
 void CountdownLatch::operator++()
 {
-  _cnt++;
+  ++_cnt;
 }
 
 void CountdownLatch::operator++(int)
 {
-  _cnt++;
+  ++_cnt;
+}
+
+int CountdownLatch::operator()()
+{
+  return _cnt;
 }
