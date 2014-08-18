@@ -209,8 +209,8 @@ class ColumnRange
 
 Vector operator* (const ColumnRange &C, const Vector &x);
 Vector operator* (const ColumnRange &C, const Column &x);
-void op_mul_impl(const ColumnRange C, const Vector x, Vector Cx);
-void op_mul_impl_T(const ColumnRange C, const Vector x, Vector Cx);
+void op_mul_impl(const ColumnRange C, size_t qcv, const Vector x, Vector Cx);
+void op_mul_impl_T(const ColumnRange C, size_t qcv, const Vector x, Vector Cx);
 
 struct SparseMatrixData
 {

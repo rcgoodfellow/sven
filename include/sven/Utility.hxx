@@ -134,7 +134,7 @@ class Object
     }
 
     size_t scheduled_version() const { return _scheduled_version; }
-    size_t current_version() const { return _current_version; }
+    size_t current_version() const { return *_current_version; }
 
   protected:
     T _data;

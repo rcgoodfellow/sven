@@ -823,8 +823,9 @@ Vector sven::operator* (const ColumnRange &C, const Vector &x)
     {
       throw runtime_error("non-conformal operation:" + CRIME_SCENE);
     }
+    size_t qcv = C.origin->scheduled_version();
     Vector Cx = Vector::Zero(C.n(), false);
-    internal::Thunk t = [C,x,Cx](){ op_mul_impl_T(C,x,Cx); };
+    internal::Thunk t = [C,qcv,x,Cx](){ op_mul_impl_T(C,qcv,x,Cx); };
     internal::RT::Q().push(t);
     return Cx;
   }
@@ -834,8 +835,9 @@ Vector sven::operator* (const ColumnRange &C, const Vector &x)
     {
       //throw runtime_error("non-conformal operation:" + CRIME_SCENE);
     }
+    size_t qcv = C.origin->scheduled_version();
     Vector Cx = Vector::Zero(C.m(), false);
-    internal::Thunk t = [C,x,Cx](){ op_mul_impl(C,x,Cx); };
+    internal::Thunk t = [C,x,Cx,qcv](){ op_mul_impl(C,qcv,x,Cx); };
     internal::RT::Q().push(t);
     return Cx;
   }
@@ -850,9 +852,10 @@ Vector sven::operator* (const ColumnRange &C, const Column &x)
   return C * cx;
 }
 
-void sven::op_mul_impl(const ColumnRange C, const Vector x, Vector Cx)
+void sven::op_mul_impl(const ColumnRange C, size_t qcv, const Vector x, 
+    Vector Cx)
 {
-  lock_guard<mutex> lkc{*C.origin->wait().mutex(), adopt_lock};
+  lock_guard<mutex> lkc{*C.origin->wait(qcv).mutex(), adopt_lock};
   WAIT_GUARD(x);
   MOD_GUARD(Cx);
   CountdownLatch cl{static_cast<int>(C.m())};
@@ -874,7 +877,7 @@ void sven::op_mul_impl(const ColumnRange C, const Vector x, Vector Cx)
   Cx.tock();
 }
 
-void sven::op_mul_impl_T(const ColumnRange C, const Vector x, Vector Cx)
+void sven::op_mul_impl_T(const ColumnRange C, size_t qcv, const Vector x, Vector Cx)
 {
   lock_guard<mutex> lkc{*C.origin->wait().mutex(), adopt_lock};
   WAIT_GUARD(x);

@@ -51,18 +51,16 @@ void Arnoldi::operator()()
     std::cout << Q << std::endl;
     print_mutex.unlock();
 
-    /*
     H.C(i) = T(Q.C(0,i)) * Q.C(i+1);
     std::cout << "H" << std::endl;
     std::cout << H << std::endl;
-    */
 
-    //Q.C(i+1) -= r0;// Q.C(0,i) * H.C(i);
+    Q.C(i+1) -= Q.C(0,i) * H.C(i);
 
-    //print_mutex.lock();
-    //std::cout << "Q" << std::endl;
-    //std::cout << Q << std::endl;
-    //print_mutex.unlock();
+    print_mutex.lock();
+    std::cout << "Q" << std::endl;
+    std::cout << Q << std::endl;
+    print_mutex.unlock();
 
     //reortho
     //Vector s = T(Q.C(0,i)) * Q.C(i+1);
