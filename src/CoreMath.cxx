@@ -806,6 +806,11 @@ bool Column::operator== (const Vector &x)
   return result;
 }
 
+double & Column::operator()(size_t i)
+{
+  return origin->operator()(i, index);
+}
+
 //~=~ Column Range ~=~---------------------------------------------------------
 
 ColumnRange::ColumnRange(Matrix *origin, size_t begin, size_t end)
@@ -814,6 +819,8 @@ ColumnRange::ColumnRange(Matrix *origin, size_t begin, size_t end)
 
 size_t ColumnRange::m() const { return origin->m(); }
 size_t ColumnRange::n() const { return end - begin + 1; }
+
+#include <iostream>
 
 Vector sven::operator* (const ColumnRange &C, const Vector &x)
 {
@@ -846,7 +853,7 @@ Vector sven::operator* (const ColumnRange &C, const Vector &x)
 
 Vector sven::operator* (const ColumnRange &C, const Column &x)
 {
-  lock_guard<mutex> lkc{*C.origin->wait().mutex(), adopt_lock};
+  //lock_guard<mutex> lkc{*C.origin->wait().mutex(), adopt_lock};
 
   Vector cx = x;
   return C * cx;
@@ -879,7 +886,7 @@ void sven::op_mul_impl(const ColumnRange C, size_t qcv, const Vector x,
 
 void sven::op_mul_impl_T(const ColumnRange C, size_t qcv, const Vector x, Vector Cx)
 {
-  lock_guard<mutex> lkc{*C.origin->wait().mutex(), adopt_lock};
+  lock_guard<mutex> lkc{*C.origin->wait(qcv).mutex(), adopt_lock};
   WAIT_GUARD(x);
   MOD_GUARD(Cx);
   CountdownLatch cl{static_cast<int>(C.n())};

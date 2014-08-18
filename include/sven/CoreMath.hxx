@@ -140,6 +140,7 @@ class Column
     Column & operator-= (const Vector &);
     Column & operator+= (const Vector &);
     bool operator== (const Vector &);
+    double & operator()(size_t i);
     
     Matrix *origin;
     size_t index;

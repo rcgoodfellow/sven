@@ -21,7 +21,7 @@ TEST(Arnoldi, Small)
   Vector b{0.47, 0.32, 0.34, 0.41, 0.28};
   Vector x0{0,0,0,0,0};
 
-  Arnoldi arnoldi(5, A, x0, b);
+  Arnoldi arnoldi(6, A, x0, b);
   arnoldi();
 }
 
