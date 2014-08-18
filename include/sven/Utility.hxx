@@ -122,6 +122,16 @@ class Object
       }
       return lk;
     }
+    std::unique_lock<std::mutex> mod_wait(size_t v) const
+    {
+      std::unique_lock<std::mutex> lk{*_mtx};
+      if(*_current_version <= (v - 1))
+      {
+        _cnd->wait(lk, 
+            [this, v](){return *_current_version >= (v - 1);});
+      }
+      return lk;
+    }
 
     std::unique_lock<std::mutex> hold() const
     {

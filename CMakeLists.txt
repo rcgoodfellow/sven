@@ -5,7 +5,7 @@ SET(CMAKE_C_COMPILER clang)
 
 project(sven)
 
-SET(SHARED_FLAGS "-DDEBUG -Wall -Wextra -O2 -g -fcolor-diagnostics")
+SET(SHARED_FLAGS "-DDEBUG -Wall -Wextra -O0 -g -fcolor-diagnostics")
 SET(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} ${SHARED_FLAGS} -stdlib=libc++ -std=c++11 -fpic")
 SET(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} ${SHARED_FLAGS} -std=c11")
 

@@ -41,6 +41,7 @@ class Vector : public Object<double*>
     explicit Vector(size_t n);
     explicit Vector(std::initializer_list<double>);
     Vector(const Column &c);
+    //Vector operator=(const Column &c);
     static Vector Zero(size_t n, bool ready=true);
     Vector operator! ();
 
@@ -58,6 +59,9 @@ class Vector : public Object<double*>
   private:
     size_t _n;
 };
+
+void vec_from_col_impl(double *a, const Column b, size_t csv,
+    internal::Thunk tk);
     
 Scalar norm(const Vector x);
     
@@ -101,10 +105,12 @@ class Scalar : public Object<double*>
   public:
     Scalar();
     explicit Scalar(double value);
+    explicit Scalar(double *value);
 
     double & operator()() const;
     bool operator==(const Scalar &s);
 
+    Scalar & operator=  (const Scalar&);
     Scalar & operator+= (const Scalar&);
     Scalar & operator-= (const Scalar&);
     Scalar & operator*= (const Scalar&);
@@ -115,6 +121,9 @@ class Scalar : public Object<double*>
 };
 
 Scalar sqrt(const Scalar);
+void op_sqrt_impl(Scalar a, const Scalar b);
+
+void op_eq_impl(Scalar a, const Scalar b);
 
 Scalar operator+ (const Scalar &a, const Scalar &b);
 void op_plus_impl(const Scalar a, const Scalar b, Scalar ab);
@@ -140,9 +149,9 @@ class Column
     Column & operator-= (const Vector &);
     Column & operator+= (const Vector &);
     bool operator== (const Vector &);
-    double & operator()(size_t i);
+    Scalar operator()(size_t i);
     
-    Matrix *origin;
+    Matrix *origin ;
     size_t index;
 
   private:
@@ -153,9 +162,11 @@ class Column
 
 };
 
-void op_eq_impl(Column c, Vector x);
-void op_minus_eq_impl(Column c, Vector x);
-void op_plus_eq_impl(Column c, Vector x);
+void op_subscr_impl(size_t i, Scalar s, const Column c, size_t sv);
+
+void op_eq_impl(Column c, Vector x, size_t sv);
+void op_minus_eq_impl(Column c, Vector x, size_t sv);
+void op_plus_eq_impl(Column c, Vector x, size_t sv);
 
 class Matrix : public Object<double*>
 {

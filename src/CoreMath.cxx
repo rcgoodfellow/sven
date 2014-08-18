@@ -61,11 +61,29 @@ void sven::op_bang_impl(Vector a, const Vector b)
 Vector::Vector(const Column &c)
   : Vector(c.origin->m())
 {
-  lock_guard<mutex> lkc{*c.origin->wait().mutex(), std::adopt_lock};
+  size_t csv = c.origin->scheduled_version();
+  size_t * _c_v = _current_version;
+  condition_variable *_cnd_var = _cnd.get();
+  internal::Thunk tk = [_c_v,_cnd_var]()
+  {
+      ++(*_c_v);
+      _cnd_var->notify_all();
+  };
 
-  for(size_t i=0; i<_n; ++i) { this->operator()(i) = (*c.origin)(i, c.index); }
+  double *a = _data;
 
-  tock();
+  internal::Thunk t = [a,c,csv,tk](){ vec_from_col_impl(a, c, csv, tk); };
+  internal::RT::Q().push(t);
+}
+
+void sven::vec_from_col_impl(double *a, const Column c, size_t csv,
+    internal::Thunk tk)
+{
+  lock_guard<mutex> lkc{*c.origin->wait(csv).mutex(), std::adopt_lock};
+
+  for(size_t i=0; i<c.origin->m(); ++i) { a[i] = (*c.origin)(i, c.index); }
+
+  tk();
 }
 
 Vector Vector::Zero(size_t n, bool ready)
@@ -133,7 +151,15 @@ Vector & Vector::operator/= (const Scalar &x)
 
 Scalar sven::norm(const Vector x)
 {
-  return sqrt(x * x);  
+  return sqrt(x * x);
+}
+
+Scalar & Scalar::operator= (const Scalar &x)
+{
+  tick();
+  internal::Thunk t = [this,x]{ op_eq_impl(*this, x); };
+  internal::RT::Q().push(t);
+  return *this;
 }
 
 Scalar & Scalar::operator+= (const Scalar &x)
@@ -345,11 +371,30 @@ Scalar::Scalar(double value) : Scalar()
   tock();
 }
 
+Scalar::Scalar(double *value)
+  : Object(value)
+{
+
+}
+
 Scalar sven::sqrt(const Scalar x)
 {
-  WAIT_GUARD(x);
-  Scalar s(::sqrt(x()));
+  Scalar s;
+  
+  internal::Thunk t = [s,x](){ op_sqrt_impl(s, x); };
+  internal::RT::Q().push(t);
+
   return s;
+}
+
+void sven::op_sqrt_impl(Scalar a, const Scalar b)
+{
+  WAIT_GUARD(b);
+  MOD_GUARD(a);
+
+  a() = ::sqrt(b());
+
+  a.tock();
 }
 
 double & Scalar::operator()() const
@@ -371,6 +416,16 @@ Scalar sven::operator+ (const Scalar &a, const Scalar &b)
   internal::Thunk t = [a,b,ab](){ op_plus_impl(a,b,ab); };
   internal::RT::Q().push(t);
   return ab;
+}
+
+void sven::op_eq_impl(Scalar a, const Scalar b)
+{
+  MOD_GUARD(a);
+  WAIT_GUARD(b);
+
+  a() = b();
+
+  a.tock();
 }
 
 void sven::op_plus_impl(const Scalar a, const Scalar b, Scalar ab)
@@ -716,20 +771,22 @@ Column & Column::operator= (const Vector &x)
   { 
     throw runtime_error("non-conformal operation:" + CRIME_SCENE); 
   }
- 
+
+
   origin->tick();
-  
-  internal::Thunk t = [this,x](){op_eq_impl(*this, x);};
+
+  size_t sv = origin->scheduled_version();
+  internal::Thunk t = [this,x, sv](){op_eq_impl(*this, x, sv);};
   internal::RT::Q().push(t);
 
   return *this;
 }
 
-void sven::op_eq_impl(Column c, Vector x)
+void sven::op_eq_impl(Column c, Vector x, size_t sv)
 {
   //std::cout << "J" << std::endl;
   WAIT_GUARD(x);
-  lock_guard<mutex> lkc{*c.origin->mod_wait().mutex(), std::adopt_lock};
+  lock_guard<mutex> lkc{*c.origin->mod_wait(sv).mutex(), std::adopt_lock};
   //std::cout << "K" << std::endl;
 
   size_t n = std::min(c.origin->m(), x.n());
@@ -748,16 +805,17 @@ Column & Column::operator-= (const Vector &x)
 
   origin->tick();
 
-  internal::Thunk t = [this,x](){op_minus_eq_impl(*this, x);};
+  size_t sv = origin->scheduled_version();
+  internal::Thunk t = [this,x, sv](){op_minus_eq_impl(*this, x, sv);};
   internal::RT::Q().push(t);
   
   return *this;
 }
 
-void sven::op_minus_eq_impl(Column c, Vector x)
+void sven::op_minus_eq_impl(Column c, Vector x, size_t sv)
 {
   WAIT_GUARD(x);
-  lock_guard<mutex> lkc{*c.origin->mod_wait().mutex(), std::adopt_lock};
+  lock_guard<mutex> lkc{*c.origin->mod_wait(sv).mutex(), std::adopt_lock};
   
   size_t n = std::min(c.origin->m(), x.n());
   for(size_t i=0; i<n; ++i) { (*c.origin)(i, c.index) -= x(i); }
@@ -772,18 +830,18 @@ Column & Column::operator+= (const Vector &x)
     throw runtime_error("non-conformal operation:" + CRIME_SCENE); 
   }
 
-  origin->tick();
-
-  internal::Thunk t = [this,x](){op_plus_eq_impl(*this, x);};
+  size_t sv = origin->tick();
+  
+  internal::Thunk t = [this,x,sv](){op_plus_eq_impl(*this, x, sv);};
   internal::RT::Q().push(t);
   
   return *this;
 }
 
-void sven::op_plus_eq_impl(Column c, Vector x)
+void sven::op_plus_eq_impl(Column c, Vector x, size_t sv)
 {
   WAIT_GUARD(x);
-  lock_guard<mutex> lkc{*c.origin->mod_wait().mutex(), std::adopt_lock};
+  lock_guard<mutex> lkc{*c.origin->mod_wait(sv).mutex(), std::adopt_lock};
 
   for(size_t i=0; i<c.origin->m(); ++i) { (*c.origin)(i, c.index) += x(i); }
 
@@ -806,9 +864,26 @@ bool Column::operator== (const Vector &x)
   return result;
 }
 
-double & Column::operator()(size_t i)
+Scalar Column::operator()(size_t i)
 {
-  return origin->operator()(i, index);
+  Scalar s(&origin->operator()(i, index));
+
+  size_t sv = origin->scheduled_version();
+  internal::Thunk t = [i,this,s,sv](){ op_subscr_impl(i, s, *this, sv); };
+  internal::RT::Q().push(t);
+
+  return s;
+}
+
+void sven::op_subscr_impl(size_t i, Scalar s, const Column c, size_t sv)
+{
+  MOD_GUARD(s);
+  lock_guard<mutex> lk{*c.origin->wait(sv).mutex(), adopt_lock};
+
+  //s() = (c.origin->operator()(i, c.index));
+
+  s.tock();
+
 }
 
 //~=~ Column Range ~=~---------------------------------------------------------

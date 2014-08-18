@@ -30,64 +30,58 @@ using std::mutex;
 
 void Arnoldi::operator()()
 {
-  mutex print_mutex{};
+  //mutex print_mutex{};
 
   r0 = b - A*x0;
   r0 /= norm(r0);
   Q.C(0) = r0;
 
-  print_mutex.lock();
-  std::cout << "Q" << std::endl;
-  std::cout << Q << std::endl;
-  print_mutex.unlock();
+  //print_mutex.lock();
+  //std::cout << "Q" << std::endl;
+  //std::cout << Q << std::endl;
+  //print_mutex.unlock();
 
 
   for(size_t i=0; i<_n-1; ++i)
   {
+    //new subspace element
     Q.C(i+1) = A*Q.C(i);
 
-    print_mutex.lock();
-    std::cout << "Q1" << std::endl;
-    std::cout << Q << std::endl;
-    print_mutex.unlock();
+    Q.wait();
+    std::cout << "a" << std::endl;
 
+    //ortho
     H.C(i) = T(Q.C(0,i)) * Q.C(i+1);
-    std::cout << "H" << std::endl;
-    std::cout << H << std::endl;
-
     Q.C(i+1) -= Q.C(0,i) * H.C(i);
 
-    print_mutex.lock();
-    std::cout << "Q2" << std::endl;
-    std::cout << Q << std::endl;
-    print_mutex.unlock();
+    H.wait();
+    Q.wait();
+    std::cout << "b" << std::endl;
+    
 
     //reortho
-    Vector s = T(Q.C(0,i)) * Q.C(i+1);
-    Q.C(i+1) -= Q.C(0,i) * s;
-    H.C(i) += s;
+    //Vector s = T(Q.C(0,i)) * Q.C(i+1);
+    //Q.C(i+1) -= Q.C(0,i) * s;
+    //H.C(i) += s;
+    
+    //normo
     Vector x = Q.C(i+1);
     Scalar xn = norm(x);
-    xn.wait();
-    H.C(i)(i+1) = xn();
+    H.C(i)(i+1) = xn;
     Q.C(i+1) = x / xn;
-
     
-    print_mutex.lock();
-    std::cout << "Q3" << std::endl;
-    std::cout << Q << std::endl;
-    print_mutex.unlock();
-    
-    print_mutex.lock();
-    std::cout << "H" << std::endl;
-    std::cout << H << std::endl;
-    print_mutex.unlock();
+    H.wait();
+    Q.wait();
+    std::cout << "d" << std::endl;
   }
 
+  /*
   while(internal::RT::get().active_jobs > 0 || !internal::RT::Q().empty())
   {
     usleep(10);
   }
+    
+  */
 
 }
 

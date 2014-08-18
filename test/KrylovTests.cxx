@@ -23,5 +23,12 @@ TEST(Arnoldi, Small)
 
   Arnoldi arnoldi(6, A, x0, b);
   arnoldi();
+  
+  std::cout << "Q" << std::endl;
+  std::cout << arnoldi.Q << std::endl;
+    
+  std::cout << "H" << std::endl;
+  std::cout << arnoldi.H << std::endl;
+
 }
 
