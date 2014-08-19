@@ -284,7 +284,8 @@ TEST(Matrix, ColRef)
 
   EXPECT_TRUE(c2 == x2);
 
-  Vector x3 = A.C(2);
+  Vector x3(5);
+  x3 = A.C(2);
 
   EXPECT_TRUE(x3 == x2);
 }

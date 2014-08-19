@@ -40,8 +40,8 @@ class Vector : public Object<double*>
 
     explicit Vector(size_t n);
     explicit Vector(std::initializer_list<double>);
-    Vector(const Column &c);
-    //Vector operator=(const Column &c);
+    //Vector(const Column &c);
+    Vector operator=(const Column &c);
     static Vector Zero(size_t n, bool ready=true);
     Vector operator! ();
 
@@ -60,8 +60,7 @@ class Vector : public Object<double*>
     size_t _n;
 };
 
-void vec_from_col_impl(double *a, const Column b, size_t csv,
-    internal::Thunk tk);
+void op_eq_impl(Vector a, const Column c, size_t sv);
     
 Scalar norm(const Vector x);
     
@@ -145,7 +144,7 @@ class Column
 {
   public:
     Column() = delete;
-    Column & operator= (const Vector &);
+    Column & operator= (const Vector );
     Column & operator-= (const Vector &);
     Column & operator+= (const Vector &);
     bool operator== (const Vector &);
@@ -153,6 +152,11 @@ class Column
     
     Matrix *origin ;
     size_t index;
+
+    size_t scheduled_version() const;
+    size_t current_version() const;
+    size_t id() const;
+    long vdelta() const;
 
   private:
     Column(Matrix *origin, size_t index);
@@ -162,7 +166,7 @@ class Column
 
 };
 
-void op_subscr_impl(size_t i, Scalar s, const Column c, size_t sv);
+void op_subscr_impl(Scalar s, const Column c, size_t sv);
 
 void op_eq_impl(Column c, Vector x, size_t sv);
 void op_minus_eq_impl(Column c, Vector x, size_t sv);
@@ -209,6 +213,8 @@ class ColumnRange
     ColumnRange(Matrix *origin, size_t begin, size_t end);
 
     size_t m() const, n() const;
+    size_t id() const, scheduled_version() const, current_version() const;
+    long vdelta() const;
 
     bool transposed{false};
     
@@ -219,10 +225,10 @@ class ColumnRange
 
 };
 
-Vector operator* (const ColumnRange &C, const Vector &x);
-Vector operator* (const ColumnRange &C, const Column &x);
-void op_mul_impl(const ColumnRange C, size_t qcv, const Vector x, Vector Cx);
-void op_mul_impl_T(const ColumnRange C, size_t qcv, const Vector x, Vector Cx);
+Vector operator* (const ColumnRange C, const Vector x);
+Vector operator* (const ColumnRange C, const Column x);
+void op_mul_impl(const ColumnRange C, const Vector x, Vector Cx, size_t sv);
+void op_mul_impl_T(const ColumnRange C, const Vector x, Vector Cx, size_t sv);
 
 struct SparseMatrixData
 {
@@ -263,7 +269,7 @@ void multi_sparse_dot(size_t z,
 Vector operator* (const SparseMatrix &A, const Vector &x);
 void op_mul_impl(const SparseMatrix A, const Vector x, Vector Ax);
 
-void op_mul_impl(const SparseMatrix A, const Column cx, size_t cqv, Vector Ax);
+void op_mul_impl(const SparseMatrix A, const Column cx, Vector Ax, size_t sv);
 
 Vector operator* (const SparseMatrix &A, const Column &x);
 

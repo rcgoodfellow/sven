@@ -43,47 +43,46 @@ Vector::Vector(initializer_list<double> xs)
 Vector Vector::operator!()
 {
   Vector copy(n());
-  internal::Thunk t = [this,copy](){ op_bang_impl(copy, *this); };
+  Vector v = *this;
+  internal::Thunk t = [v,copy](){ op_bang_impl(copy, v); };
   internal::RT::Q().push(t);
   return copy;
 }
 
 void sven::op_bang_impl(Vector a, const Vector b)
 {
+  UOP_RECYCLE_CHECK(a, b, op_bang_impl);
+  UOP_LOG_IN(a, b);
   MOD_GUARD(a);
   WAIT_GUARD(b);
 
   for(size_t i=0; i<a.n(); ++i) { a(i) = b(i); }
 
   a.tock();
+  LOG_OUT(a);
 }
 
-Vector::Vector(const Column &c)
-  : Vector(c.origin->m())
+Vector Vector::operator= (const Column &c)
 {
-  size_t csv = c.origin->scheduled_version();
-  size_t * _c_v = _current_version;
-  condition_variable *_cnd_var = _cnd.get();
-  internal::Thunk tk = [_c_v,_cnd_var]()
-  {
-      ++(*_c_v);
-      _cnd_var->notify_all();
-  };
-
-  double *a = _data;
-
-  internal::Thunk t = [a,c,csv,tk](){ vec_from_col_impl(a, c, csv, tk); };
+  tick();
+  Vector v = *this;
+  size_t sv = c.origin->scheduled_version();
+  internal::Thunk t = [v,c,sv](){ op_eq_impl(v, c, sv); };
   internal::RT::Q().push(t);
+  return *this;
 }
 
-void sven::vec_from_col_impl(double *a, const Column c, size_t csv,
-    internal::Thunk tk)
+void sven::op_eq_impl(Vector a, const Column c, size_t sv)
 {
-  lock_guard<mutex> lkc{*c.origin->wait(csv).mutex(), std::adopt_lock};
+  UOP_RECYCLE_CHECK_SV(a, c, op_eq_impl, sv);
+  UOP_LOG_IN(a, c);
+  MOD_GUARD(a);
+  lock_guard<mutex> lkc{*c.origin->wait(sv).mutex(), std::adopt_lock};
 
-  for(size_t i=0; i<c.origin->m(); ++i) { a[i] = (*c.origin)(i, c.index); }
+  for(size_t i=0; i<a.n(); ++i){ a(i) = (*c.origin)(i, c.index); }
 
-  tk();
+  a.tock();
+  LOG_OUT(a);
 }
 
 Vector Vector::Zero(size_t n, bool ready)
@@ -120,7 +119,8 @@ bool Vector::operator== (const Vector &x)
 Vector & Vector::operator+= (const Vector &x)
 {
   tick();
-  internal::Thunk t = [this,x]{ op_plus_eq_impl(*this, x); };
+  Vector v = *this;
+  internal::Thunk t = [v,x]{ op_plus_eq_impl(v, x); };
   internal::RT::Q().push(t);
   return *this;
 }
@@ -128,7 +128,8 @@ Vector & Vector::operator+= (const Vector &x)
 Vector & Vector::operator-= (const Vector &x)
 {
   tick();
-  internal::Thunk t = [this,x]{ op_sub_eq_impl(*this, x); };
+  Vector v = *this;
+  internal::Thunk t = [v,x]{ op_sub_eq_impl(v, x); };
   internal::RT::Q().push(t);
   return *this;
 }
@@ -136,7 +137,8 @@ Vector & Vector::operator-= (const Vector &x)
 Vector & Vector::operator*= (const Scalar &x)
 {
   tick();
-  internal::Thunk t = [this,x]{ op_mul_eq_impl(*this, x); };
+  Vector v = *this;
+  internal::Thunk t = [v,x]{ op_mul_eq_impl(v, x); };
   internal::RT::Q().push(t);
   return *this;
 }
@@ -144,7 +146,8 @@ Vector & Vector::operator*= (const Scalar &x)
 Vector & Vector::operator/= (const Scalar &x)
 {
   tick();
-  internal::Thunk t = [this,x]{ op_div_eq_impl(*this, x); };
+  Vector v = *this;
+  internal::Thunk t = [v,x]{ op_div_eq_impl(v, x); };
   internal::RT::Q().push(t);
   return *this;
 }
@@ -157,7 +160,8 @@ Scalar sven::norm(const Vector x)
 Scalar & Scalar::operator= (const Scalar &x)
 {
   tick();
-  internal::Thunk t = [this,x]{ op_eq_impl(*this, x); };
+  Scalar s = *this;
+  internal::Thunk t = [s,x]{ op_eq_impl(s, x); };
   internal::RT::Q().push(t);
   return *this;
 }
@@ -165,7 +169,8 @@ Scalar & Scalar::operator= (const Scalar &x)
 Scalar & Scalar::operator+= (const Scalar &x)
 {
   tick();
-  internal::Thunk t = [this,x]{ op_plus_eq_impl(*this, x); };
+  Scalar s = *this;
+  internal::Thunk t = [s,x]{ op_plus_eq_impl(s, x); };
   internal::RT::Q().push(t);
   return *this;
 }
@@ -173,7 +178,8 @@ Scalar & Scalar::operator+= (const Scalar &x)
 Scalar & Scalar::operator-= (const Scalar &x)
 {
   tick();
-  internal::Thunk t = [this,x]{ op_sub_eq_impl(*this, x); };
+  Scalar s = *this;
+  internal::Thunk t = [s,x]{ op_sub_eq_impl(s, x); };
   internal::RT::Q().push(t);
   return *this;
 }
@@ -181,7 +187,8 @@ Scalar & Scalar::operator-= (const Scalar &x)
 Scalar & Scalar::operator*= (const Scalar &x)
 {
   tick();
-  internal::Thunk t = [this,x]{ op_mul_eq_impl(*this, x); };
+  Scalar s = *this;
+  internal::Thunk t = [s,x]{ op_mul_eq_impl(s, x); };
   internal::RT::Q().push(t);
   return *this;
 }
@@ -189,7 +196,8 @@ Scalar & Scalar::operator*= (const Scalar &x)
 Scalar & Scalar::operator/= (const Scalar &x)
 {
   tick();
-  internal::Thunk t = [this,x]{ op_div_eq_impl(*this, x); };
+  Scalar s = *this;
+  internal::Thunk t = [s,x]{ op_div_eq_impl(s, x); };
   internal::RT::Q().push(t);
   return *this;
 }
@@ -219,21 +227,27 @@ Vector sven::operator+ (const Vector &a, const Vector &b)
 
 void sven::op_plus_impl(const Vector a, const Vector b, Vector ab)
 {
+  BINOP_RECYCLE_CHECK(a, b, ab, op_plus_impl);
+  BINOP_LOG_IN(a, b, ab);
   BINOP_GUARD(a, b, ab);
 
   for(size_t i=0; i<a.n(); ++i) { ab(i) = a(i) + b(i); }
 
   ab.tock();
+  LOG_OUT(ab);
 }
 
 void sven::op_plus_eq_impl(Vector a, const Vector b)
 {
+  UOP_RECYCLE_CHECK(a, b, op_plus_eq_impl);
+  UOP_LOG_IN(a, b);
   MOD_GUARD(a);
   WAIT_GUARD(b);
 
   for(size_t i=0; i<a.n(); ++i){ a(i) += b(i); }
 
   a.tock();
+  LOG_OUT(a);
 }
 
 Vector sven::operator- (const Vector &a, const Vector &b)
@@ -251,21 +265,27 @@ Vector sven::operator- (const Vector &a, const Vector &b)
 
 void sven::op_sub_impl(const Vector a, const Vector b, Vector ab)
 {
+  BINOP_RECYCLE_CHECK(a, b, ab, op_sub_impl);
+  BINOP_LOG_IN(a, b, ab);
   BINOP_GUARD(a, b, ab);
 
   for(size_t i=0; i<a.n(); ++i) { ab(i) = a(i) - b(i); }
 
   ab.tock();
+  LOG_OUT(ab);
 }
 
 void sven::op_sub_eq_impl(Vector a, const Vector b)
 {
+  UOP_RECYCLE_CHECK(a, b, op_sub_eq_impl);
+  UOP_LOG_IN(a, b);
   MOD_GUARD(a);
   WAIT_GUARD(b);
   
   for(size_t i=0; i<a.n(); ++i){ a(i) -= b(i); }
 
   a.tock();
+  LOG_OUT(a);
 }
 
 Scalar sven::operator* (const Vector &a, const Vector &b)
@@ -298,11 +318,14 @@ double sven::dot(size_t n, double *a, double *b)
 
 void sven::op_dot_impl(const Vector a, const Vector b, Scalar ab)
 {
+  BINOP_RECYCLE_CHECK(a, b, ab, op_dot_impl);
+  BINOP_LOG_IN(a, b, ab);
   BINOP_GUARD(a, b, ab);
 
   ab() = dot(a.n(), &a(0), &b(0));
 
   ab.tock();
+  LOG_OUT(ab);
 }
 
 Vector sven::operator/ (const Vector &a, const Scalar &b)
@@ -315,21 +338,27 @@ Vector sven::operator/ (const Vector &a, const Scalar &b)
 
 void sven::op_div_impl(const Vector a, const Scalar b, Vector ab)
 {
+  BINOP_RECYCLE_CHECK(a, b, ab, op_div_impl);
+  BINOP_LOG_IN(a, b, ab);
   BINOP_GUARD(a, b, ab);
 
   for(size_t i=0; i<a.n(); ++i) { ab(i) = a(i) / b(); }
 
   ab.tock();
+  LOG_OUT(ab);
 }
 
 void sven::op_div_eq_impl(Vector a, const Scalar b)
 {
+  UOP_RECYCLE_CHECK(a, b, op_div_eq_impl);
+  UOP_LOG_IN(a, b);
   MOD_GUARD(a);
   WAIT_GUARD(b);
   
   for(size_t i=0; i<a.n(); ++i) { a(i) /= b(); }
 
   a.tock();
+  LOG_OUT(a);
 }
 
 Vector sven::operator* (const Vector &a, const Scalar &b)
@@ -342,21 +371,27 @@ Vector sven::operator* (const Vector &a, const Scalar &b)
 
 void sven::op_mul_impl(const Vector a, const Scalar b, Vector ab)
 {
+  BINOP_RECYCLE_CHECK(a, b, ab, op_mul_impl);
+  BINOP_LOG_IN(a, b, ab);
   BINOP_GUARD(a, b, ab);
 
   for(size_t i=0; i<a.n(); ++i) { ab(i) = a(i) * b(); }
 
   ab.tock();
+  LOG_OUT(ab);
 }
 
 void sven::op_mul_eq_impl(Vector a, const Scalar b)
 {
+  UOP_RECYCLE_CHECK(a, b, op_mul_eq_impl);
+  UOP_LOG_IN(a, b);
   MOD_GUARD(a);
   WAIT_GUARD(b);
   
   for(size_t i=0; i<a.n(); ++i) { a(i) *= b(); }
 
   a.tock();
+  LOG_OUT(a);
 }
 
 //~= Scalar ~=-----------------------------------------------------------------
@@ -389,12 +424,15 @@ Scalar sven::sqrt(const Scalar x)
 
 void sven::op_sqrt_impl(Scalar a, const Scalar b)
 {
+  UOP_RECYCLE_CHECK(a, b, op_sqrt_impl);
+  UOP_LOG_IN(a, b);
   WAIT_GUARD(b);
   MOD_GUARD(a);
 
   a() = ::sqrt(b());
 
   a.tock();
+  LOG_OUT(a);
 }
 
 double & Scalar::operator()() const
@@ -420,30 +458,39 @@ Scalar sven::operator+ (const Scalar &a, const Scalar &b)
 
 void sven::op_eq_impl(Scalar a, const Scalar b)
 {
+  UOP_RECYCLE_CHECK(a, b, op_eq_impl);
+  UOP_LOG_IN(a, b);
   MOD_GUARD(a);
   WAIT_GUARD(b);
 
   a() = b();
 
   a.tock();
+  LOG_OUT(a);
 }
 
 void sven::op_plus_impl(const Scalar a, const Scalar b, Scalar ab)
 {
+  BINOP_RECYCLE_CHECK(a, b, ab, op_plus_impl);
+  BINOP_LOG_IN(a, b, ab);
   BINOP_GUARD(a, b, ab);
 
   ab() = a() + b();
 
   ab.tock();
+  LOG_OUT(ab);
 }
 void sven::op_plus_eq_impl(Scalar a, const Scalar b)
 {
+  UOP_RECYCLE_CHECK(a, b, op_plus_eq_impl);
+  UOP_LOG_IN(a, b);
   MOD_GUARD(a);
   WAIT_GUARD(b);
 
   a() += b();
 
   a.tock();
+  LOG_OUT(a);
 }
 
 Scalar sven::operator- (const Scalar &a, const Scalar &b)
@@ -456,21 +503,26 @@ Scalar sven::operator- (const Scalar &a, const Scalar &b)
 
 void sven::op_sub_impl(const Scalar a, const Scalar b, Scalar ab)
 {
-
+  BINOP_RECYCLE_CHECK(a, b, ab, op_sub_impl);
+  BINOP_LOG_IN(a, b, ab);
   BINOP_GUARD(a, b, ab);
 
   ab() = a() - b();
 
   ab.tock();
+  LOG_OUT(ab);
 }
 void sven::op_sub_eq_impl(Scalar a, const Scalar b)
 {
+  UOP_RECYCLE_CHECK(a, b, op_sub_eq_impl);
+  UOP_LOG_IN(a, b)
   MOD_GUARD(a);
   WAIT_GUARD(b);
 
   a() -= b();
 
   a.tock();
+  LOG_OUT(a);
 }
 
 Scalar sven::operator* (const Scalar &a, const Scalar &b)
@@ -483,20 +535,26 @@ Scalar sven::operator* (const Scalar &a, const Scalar &b)
 
 void sven::op_mul_impl(const Scalar a, const Scalar b, Scalar ab)
 {
+  BINOP_RECYCLE_CHECK(a, b, ab, op_mul_impl);
+  BINOP_LOG_IN(a, b, ab);
   BINOP_GUARD(a, b, ab);
 
   ab() = a() * b();
 
   ab.tock();
+  LOG_OUT(ab);
 }
 void sven::op_mul_eq_impl(Scalar a, const Scalar b)
 {
+  UOP_RECYCLE_CHECK(a, b, op_mul_eq_impl);
+  UOP_LOG_IN(a, b);
   MOD_GUARD(a);
   WAIT_GUARD(b);
 
   a() *= b();
 
   a.tock();
+  LOG_OUT(a);
 }
 
 Scalar sven::operator/ (const Scalar &a, const Scalar &b)
@@ -509,20 +567,27 @@ Scalar sven::operator/ (const Scalar &a, const Scalar &b)
 
 void sven::op_div_impl(const Scalar a, const Scalar b, Scalar ab)
 {
+  BINOP_RECYCLE_CHECK(a, b, ab, op_div_impl);
+  BINOP_LOG_IN(a, b, ab);
   BINOP_GUARD(a, b, ab);
 
   ab() = a() / b();
 
   ab.tock();
+  LOG_OUT(ab);
 }
+
 void sven::op_div_eq_impl(Scalar a, const Scalar b)
 {
+  UOP_RECYCLE_CHECK(a, b, op_div_eq_impl);
+  UOP_LOG_IN(a, b);
   MOD_GUARD(a);
   WAIT_GUARD(b);
 
   a() /= b();
 
   a.tock();
+  LOG_OUT(a);
 }
 
 //~= Matrix ~=-----------------------------------------------------------------
@@ -598,13 +663,16 @@ std::ostream & sven::operator<< (std::ostream &o, Matrix &A)
 Matrix Matrix::operator!()
 {
   Matrix copy(m(), n());
-  internal::Thunk t = [this,copy](){ op_bang_impl(copy, *this); };
+  Matrix m = *this;
+  internal::Thunk t = [m,copy](){ op_bang_impl(copy, m); };
   internal::RT::Q().push(t);
   return copy;
 }
 
 void sven::op_bang_impl(Matrix A, const Matrix B, bool use_mod_guard)
 {
+  //TODO: UOP_RECYCLE_CHECK with use_mod_guard?
+  UOP_LOG_IN(A, B);
   MOD_GUARD(A);
   if(use_mod_guard){ MOD_GUARD(B); }
   else{ WAIT_GUARD(B); }
@@ -613,12 +681,14 @@ void sven::op_bang_impl(Matrix A, const Matrix B, bool use_mod_guard)
   for(size_t i=0; i<A.m()*A.n(); ++i) { a[i] = b[i]; }
 
   A.tock();
+  LOG_OUT(A);
 }
 
 Matrix & Matrix::operator*= (const Matrix &A)
 {
   tick();
-  internal::Thunk t = [this, A]{ op_mul_eq_impl(*this, A); };
+  Matrix m = *this;
+  internal::Thunk t = [m, A]{ op_mul_eq_impl(m, A); };
   internal::RT::Q().push(t);
   return *this;
 }
@@ -665,9 +735,11 @@ void sven::multi_dot(size_t n,
 
 void sven::op_mul_impl(const Matrix A, const Vector x, Vector Ax)
 {
+  BINOP_RECYCLE_CHECK(A, x, Ax, op_mul_impl);
+  BINOP_LOG_IN(A, x, Ax);
   BINOP_GUARD(A, x, Ax);
   CountdownLatch cl{static_cast<int>(A.m())};
-
+  LATCH_LOG(cl);
   for(size_t i=0; i<A.n(); ++i)
   {
     internal::Thunk t = [A, x, Ax, &cl, i]()
@@ -678,8 +750,10 @@ void sven::op_mul_impl(const Matrix A, const Vector x, Vector Ax)
     internal::RT::Q().push(t);
   }
   cl.wait();
+  UNLATCH_LOG(cl);
 
   Ax.tock();
+  LOG_OUT(Ax);
 }
 
 Matrix sven::operator* (const Matrix &A, const Matrix &B)
@@ -697,8 +771,11 @@ Matrix sven::operator* (const Matrix &A, const Matrix &B)
 
 void sven::op_mul_impl(const Matrix A, const Matrix B, Matrix AB)
 {
+  BINOP_RECYCLE_CHECK(A, B, AB, op_mul_impl);
+  BINOP_LOG_IN(A, B, AB);
   BINOP_GUARD(A, B, AB);
   CountdownLatch cl{static_cast<int>(A.m()*B.n())};
+  LATCH_LOG(cl);
 
   for(size_t i=0; i<A.m(); ++i)
   {
@@ -716,15 +793,20 @@ void sven::op_mul_impl(const Matrix A, const Matrix B, Matrix AB)
     }
   }
   cl.wait();
+  UNLATCH_LOG(cl);
 
   AB.tock();
+  LOG_OUT(AB);
 }
 
 void sven::op_mul_eq_impl(Matrix A, const Matrix B)
 {
+  UOP_RECYCLE_CHECK(A, B, op_mul_eq_impl);
+  UOP_LOG_IN(A, B);
   MOD_GUARD(A);
   WAIT_GUARD(B);
   CountdownLatch cl{static_cast<int>(A.m()*B.n())};
+  LATCH_LOG(cl);
 
   Matrix AC(A.m(), A.n()); 
   op_bang_impl(AC, A, true);
@@ -745,8 +827,10 @@ void sven::op_mul_eq_impl(Matrix A, const Matrix B)
     }
   }
   cl.wait();
+  UNLATCH_LOG(cl);
 
   A.tock();
+  LOG_OUT(A);
 }
 
 Column Matrix::C(size_t index)
@@ -765,7 +849,7 @@ Column::Column(Matrix *origin, size_t index)
   : origin{origin}, index{index}
 {}
     
-Column & Column::operator= (const Vector &x)
+Column & Column::operator= (const Vector x)
 {
   if(origin->m() < x.n())
   { 
@@ -775,8 +859,11 @@ Column & Column::operator= (const Vector &x)
 
   origin->tick();
 
+  LOGG(to_string(this->vdelta()));
+
   size_t sv = origin->scheduled_version();
-  internal::Thunk t = [this,x, sv](){op_eq_impl(*this, x, sv);};
+  Column c = *this;
+  internal::Thunk t = [c,x,sv](){op_eq_impl(c, x, sv);};
   internal::RT::Q().push(t);
 
   return *this;
@@ -784,15 +871,16 @@ Column & Column::operator= (const Vector &x)
 
 void sven::op_eq_impl(Column c, Vector x, size_t sv)
 {
-  //std::cout << "J" << std::endl;
+  UOP_RECYCLE_CHECK_SV(c, x, op_eq_impl, sv);
+  UOP_LOG_IN(c, x);
   WAIT_GUARD(x);
   lock_guard<mutex> lkc{*c.origin->mod_wait(sv).mutex(), std::adopt_lock};
-  //std::cout << "K" << std::endl;
 
   size_t n = std::min(c.origin->m(), x.n());
   for(size_t i=0; i<n; ++i) { (*c.origin)(i, c.index) = x(i); }
 
   c.origin->tock();
+  LOG_OUT(c);
 }
 
 using std::unique_ptr;
@@ -805,8 +893,9 @@ Column & Column::operator-= (const Vector &x)
 
   origin->tick();
 
+  Column c = *this;
   size_t sv = origin->scheduled_version();
-  internal::Thunk t = [this,x, sv](){op_minus_eq_impl(*this, x, sv);};
+  internal::Thunk t = [c,x,sv](){op_minus_eq_impl(c, x, sv);};
   internal::RT::Q().push(t);
   
   return *this;
@@ -814,6 +903,8 @@ Column & Column::operator-= (const Vector &x)
 
 void sven::op_minus_eq_impl(Column c, Vector x, size_t sv)
 {
+  UOP_RECYCLE_CHECK_SV(c, x, op_minus_eq_impl, sv);
+  UOP_LOG_IN(c, x);
   WAIT_GUARD(x);
   lock_guard<mutex> lkc{*c.origin->mod_wait(sv).mutex(), std::adopt_lock};
   
@@ -821,6 +912,7 @@ void sven::op_minus_eq_impl(Column c, Vector x, size_t sv)
   for(size_t i=0; i<n; ++i) { (*c.origin)(i, c.index) -= x(i); }
 
   c.origin->tock();
+  LOG_OUT(c);
 }
 
 Column & Column::operator+= (const Vector &x)
@@ -832,7 +924,8 @@ Column & Column::operator+= (const Vector &x)
 
   size_t sv = origin->tick();
   
-  internal::Thunk t = [this,x,sv](){op_plus_eq_impl(*this, x, sv);};
+  Column c = *this;
+  internal::Thunk t = [c,x,sv](){op_plus_eq_impl(c, x, sv);};
   internal::RT::Q().push(t);
   
   return *this;
@@ -840,12 +933,15 @@ Column & Column::operator+= (const Vector &x)
 
 void sven::op_plus_eq_impl(Column c, Vector x, size_t sv)
 {
+  UOP_RECYCLE_CHECK_SV(c, x, op_plus_eq_impl, sv);
+  UOP_LOG_IN(c, x);
   WAIT_GUARD(x);
   lock_guard<mutex> lkc{*c.origin->mod_wait(sv).mutex(), std::adopt_lock};
 
   for(size_t i=0; i<c.origin->m(); ++i) { (*c.origin)(i, c.index) += x(i); }
 
   c.origin->tock();
+  LOG_OUT(c);
 }
 
 bool Column::operator== (const Vector &x)
@@ -868,22 +964,45 @@ Scalar Column::operator()(size_t i)
 {
   Scalar s(&origin->operator()(i, index));
 
+  Column c = *this;
   size_t sv = origin->scheduled_version();
-  internal::Thunk t = [i,this,s,sv](){ op_subscr_impl(i, s, *this, sv); };
+  internal::Thunk t = [c,s,sv](){ op_subscr_impl(s, c, sv); };
   internal::RT::Q().push(t);
 
   return s;
 }
 
-void sven::op_subscr_impl(size_t i, Scalar s, const Column c, size_t sv)
+size_t Column::scheduled_version() const
 {
+  return origin->scheduled_version();
+}
+
+size_t Column::current_version() const
+{
+  return origin->current_version();
+}
+
+size_t Column::id() const
+{
+  return origin->id();
+}
+
+long Column::vdelta() const
+{
+  return origin->scheduled_version() - origin->current_version();
+}
+
+void sven::op_subscr_impl(Scalar s, const Column c, size_t sv)
+{
+  UOP_RECYCLE_CHECK_SV(s, c, op_subscr_impl, sv);
+  UOP_LOG_IN(s, c);
   MOD_GUARD(s);
   lock_guard<mutex> lk{*c.origin->wait(sv).mutex(), adopt_lock};
 
   //s() = (c.origin->operator()(i, c.index));
 
   s.tock();
-
+  LOG_OUT(s);
 }
 
 //~=~ Column Range ~=~---------------------------------------------------------
@@ -894,10 +1013,27 @@ ColumnRange::ColumnRange(Matrix *origin, size_t begin, size_t end)
 
 size_t ColumnRange::m() const { return origin->m(); }
 size_t ColumnRange::n() const { return end - begin + 1; }
+    
+size_t ColumnRange::id() const { return origin->id(); }
+
+size_t ColumnRange::scheduled_version() const
+{
+  return origin->scheduled_version();
+}
+
+size_t ColumnRange::current_version() const
+{
+  return origin->current_version();
+}
+
+long ColumnRange::vdelta() const
+{
+  return origin->scheduled_version() - origin->current_version();
+}
 
 #include <iostream>
 
-Vector sven::operator* (const ColumnRange &C, const Vector &x)
+Vector sven::operator* (const ColumnRange C, const Vector x)
 {
   if(C.transposed)
   {
@@ -905,9 +1041,9 @@ Vector sven::operator* (const ColumnRange &C, const Vector &x)
     {
       throw runtime_error("non-conformal operation:" + CRIME_SCENE);
     }
-    size_t qcv = C.origin->scheduled_version();
+    size_t sv = C.origin->scheduled_version();
     Vector Cx = Vector::Zero(C.n(), false);
-    internal::Thunk t = [C,qcv,x,Cx](){ op_mul_impl_T(C,qcv,x,Cx); };
+    internal::Thunk t = [C,sv,x,Cx](){ op_mul_impl_T(C,x,Cx,sv); };
     internal::RT::Q().push(t);
     return Cx;
   }
@@ -919,28 +1055,32 @@ Vector sven::operator* (const ColumnRange &C, const Vector &x)
     }
     size_t qcv = C.origin->scheduled_version();
     Vector Cx = Vector::Zero(C.m(), false);
-    internal::Thunk t = [C,x,Cx,qcv](){ op_mul_impl(C,qcv,x,Cx); };
+    internal::Thunk t = [C,x,Cx,qcv](){ op_mul_impl(C,x,Cx,qcv); };
     internal::RT::Q().push(t);
     return Cx;
   }
 
 }
 
-Vector sven::operator* (const ColumnRange &C, const Column &x)
+Vector sven::operator* (const ColumnRange C, const Column x)
 {
   //lock_guard<mutex> lkc{*C.origin->wait().mutex(), adopt_lock};
 
-  Vector cx = x;
+  Vector cx = Vector::Zero(x.origin->m()); 
+  cx = x;
   return C * cx;
 }
 
-void sven::op_mul_impl(const ColumnRange C, size_t qcv, const Vector x, 
-    Vector Cx)
+void sven::op_mul_impl(const ColumnRange C, const Vector x, 
+    Vector Cx, size_t sv)
 {
-  lock_guard<mutex> lkc{*C.origin->wait(qcv).mutex(), adopt_lock};
+  BINOP_RECYCLE_CHECK_SV(C, x, Cx, op_mul_impl, sv);
+  BINOP_LOG_IN(C, x, Cx);
+  lock_guard<mutex> lkc{*C.origin->wait(sv).mutex(), adopt_lock};
   WAIT_GUARD(x);
   MOD_GUARD(Cx);
   CountdownLatch cl{static_cast<int>(C.m())};
+  LATCH_LOG(cl);
 
   for(size_t i=0; i<C.m(); ++i)
   {
@@ -955,16 +1095,22 @@ void sven::op_mul_impl(const ColumnRange C, size_t qcv, const Vector x,
     internal::RT::Q().push(t);
   }
   cl.wait();
+  UNLATCH_LOG(cl);
 
   Cx.tock();
+  LOG_OUT(Cx);
 }
 
-void sven::op_mul_impl_T(const ColumnRange C, size_t qcv, const Vector x, Vector Cx)
+void sven::op_mul_impl_T(const ColumnRange C, const Vector x, Vector Cx,
+    size_t sv)
 {
-  lock_guard<mutex> lkc{*C.origin->wait(qcv).mutex(), adopt_lock};
+  BINOP_RECYCLE_CHECK_SV(C, x, Cx, op_mul_impl, sv);
+  BINOP_LOG_IN(C, x, Cx);
+  lock_guard<mutex> lkc{*C.origin->wait(sv).mutex(), adopt_lock};
   WAIT_GUARD(x);
   MOD_GUARD(Cx);
   CountdownLatch cl{static_cast<int>(C.n())};
+  LATCH_LOG(cl);
 
   for(size_t i=0; i<C.n(); ++i)
   {
@@ -978,8 +1124,10 @@ void sven::op_mul_impl_T(const ColumnRange C, size_t qcv, const Vector x, Vector
     internal::RT::Q().push(t);
   }
   cl.wait();
+  UNLATCH_LOG(cl);
 
   Cx.tock();
+  LOG_OUT(Cx);
 }
 
 //~=~ SparseMatrix ~=~---------------------------------------------------------
@@ -1106,8 +1254,8 @@ Vector sven::operator* (const SparseMatrix &A, const Vector &x)
 Vector sven::operator* (const SparseMatrix &A, const Column &x)
 {
   Vector Ax(A.m());
-  size_t cqv = x.origin->scheduled_version();
-  internal::Thunk t = [A,x,Ax,cqv](){ op_mul_impl(A,x,cqv,Ax); };
+  size_t sv = x.origin->scheduled_version();
+  internal::Thunk t = [A,x,Ax,sv](){ op_mul_impl(A,x,Ax,sv); };
   internal::RT::Q().push(t);
   return Ax;
 }
@@ -1127,8 +1275,11 @@ void sven::multi_sparse_dot(size_t rz,
 
 void sven::op_mul_impl(const SparseMatrix A, const Vector x, Vector Ax)
 {
+  BINOP_RECYCLE_CHECK(A, x, Ax, op_mul_impl);
+  BINOP_LOG_IN(A, x, Ax);
   BINOP_GUARD(A, x, Ax);
   CountdownLatch cl{static_cast<int>(A.m())};
+  LATCH_LOG(cl);
 
   for(size_t i=0; i<A.m(); ++i)
   {
@@ -1141,22 +1292,23 @@ void sven::op_mul_impl(const SparseMatrix A, const Vector x, Vector Ax)
     internal::RT::Q().push(t);
   }
   cl.wait();
+  UNLATCH_LOG(cl);
 
   Ax.tock();
+  LOG_OUT(Ax);
 }
 
 
-void sven::op_mul_impl(const SparseMatrix A, const Column cx, size_t cqv, 
-    Vector Ax)
+void sven::op_mul_impl(const SparseMatrix A, const Column cx, 
+    Vector Ax, size_t sv)
 {
-  //std::cout << "a" << std::endl;
+  BINOP_RECYCLE_CHECK_SV(A, cx, Ax, op_mul_impl, sv);
+  BINOP_LOG_IN(A, cx, Ax);
   WAIT_GUARD(A);
-  //std::cout << "b" << std::endl;
-  lock_guard<mutex> lkcx{*cx.origin->wait(cqv).mutex(), adopt_lock};
-  //std::cout << "c" << std::endl;
+  lock_guard<mutex> lkcx{*cx.origin->wait(sv).mutex(), adopt_lock};
   MOD_GUARD(Ax);
-  //std::cout << "d" << std::endl;
   CountdownLatch cl{static_cast<int>(A.m())};
+  LATCH_LOG(cl);
 
   size_t xn = cx.origin->m();
   double *x = alloc<double>(xn);
@@ -1172,9 +1324,9 @@ void sven::op_mul_impl(const SparseMatrix A, const Column cx, size_t cqv,
     };
     internal::RT::Q().push(t);
   }
-  //std::cout << "e" << std::endl;
   cl.wait();
-  //std::cout << "f" << std::endl;
+  UNLATCH_LOG(cl);
 
   Ax.tock();
+  LOG_OUT(Ax);
 }

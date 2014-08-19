@@ -12,6 +12,7 @@ using namespace sven;
 using std::unique_lock;
 using std::mutex;
 
+
 CountdownLatch::CountdownLatch(int size)
   :_cnt{size}
 { }
@@ -51,7 +52,19 @@ void CountdownLatch::operator++(int)
   ++_cnt;
 }
 
-int CountdownLatch::operator()()
+int CountdownLatch::operator()() const
 {
   return _cnt;
 }
+
+#ifdef DEBUG
+void sven::log_recycle(const char *fn, size_t linno)
+{
+  std::stringstream ss;
+  ss
+    << std::hex << std::this_thread::get_id() << std::dec << "  "
+    << BLU << fn << ":" GRY << linno << NRM
+    << GRN << " ReCyClEd" << NRM;
+  LOGG(ss.str());
+}
+#endif

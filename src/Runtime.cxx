@@ -11,6 +11,9 @@
 using namespace sven;
 using namespace sven::internal;
 using std::thread;
+using std::mutex;
+
+mutex RT::print_mtx{};
 
 RT::RT()
 {
@@ -22,6 +25,7 @@ RT::RT()
     threads.push_back(t);
     t->detach();
   }
+  //_Q.set_capacity(n/2);
 }
 
 void RT::thread_func()
@@ -34,4 +38,13 @@ void RT::thread_func()
     t();
     --active_jobs;
   }
+}
+
+size_t RT::next_id()
+{
+#ifdef DEBUG
+  name_map[obj_counter] = std::to_string(obj_counter);
+#endif
+
+  return obj_counter++;
 }
